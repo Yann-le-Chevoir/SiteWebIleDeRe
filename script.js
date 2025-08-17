@@ -53,7 +53,7 @@
     addPersonBtn: document.getElementById('addPersonBtn'),
     addParticipantBtn: document.getElementById('addParticipantBtn'),
     addChargeBtn: document.getElementById('addChargeBtn'),
-    addAmortBtn: document.getElementById('addAmortBtn'),
+  // addAmortBtn removed per request
     saveBtn: document.getElementById('saveBtn'),
     loadInput: document.getElementById('loadInput'),
   };
@@ -169,6 +169,10 @@
   }
 
   // Renders
+  function renderPurchase(){
+    if (els.purchasePrice) els.purchasePrice.value = Math.max(0, +state.purchasePrice || 0);
+    if (els.amortYears) els.amortYears.value = Math.max(1, +state.amortYears || 1);
+  }
   function renderAnnual(){
     const { amortAnnual, chargesAnnual, total } = computeAnnual();
     els.amortAnnual.textContent = fmtCurrency(amortAnnual);
@@ -180,17 +184,18 @@
   function renderParticipants(full=false){
     if (!els.participantsTbody) return;
     if (full) els.participantsTbody.innerHTML = '';
-    const { total } = computeAnnual();
+    const purchaseTotal = Math.max(0, +state.purchasePrice || 0);
     let sumPct = 0, sumAmt = 0;
     state.participants.forEach((p, idx) => {
       const pct = clamp(+p.percent||0, 0, 100);
-      const share = total * (pct/100);
+      const share = purchaseTotal * (pct/100);
       sumPct += pct; sumAmt += share;
       if (full){
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td><input type="text" value="${p.name||''}" data-ptype="name" data-i="${idx}" /></td>
           <td><input type="number" min="0" max="100" step="1" value="${pct}" data-ptype="percent" data-i="${idx}" /></td>
+          <td class="participant-share">${fmtCurrency(share)}</td>
           <td class="actions"><button class="remove-btn" data-action="remove-participant" data-i="${idx}">✕</button></td>
         `;
         els.participantsTbody.appendChild(tr);
@@ -199,10 +204,12 @@
         if (!row) return;
         row.querySelector('input[data-ptype="name"]').value = p.name||'';
         row.querySelector('input[data-ptype="percent"]').value = pct;
+        const shareCell = row.querySelector('.participant-share');
+        if (shareCell) shareCell.textContent = fmtCurrency(share);
       }
     });
     if (els.participantsPercentTotal) els.participantsPercentTotal.textContent = fmtPct(sumPct);
-    if (els.participantsAmountTotal) els.participantsAmountTotal.textContent = fmtCurrency(sumAmt);
+    if (els.participantsAmountTotal) els.participantsAmountTotal.textContent = fmtCurrency(purchaseTotal);
     if (els.participantsWarning){
       els.participantsWarning.style.display = (sumPct === 100 ? 'none' : 'inline');
     }
@@ -225,13 +232,23 @@
               <option value="amortized" ${c.type==='amortized'?'selected':''}>Amorti</option>
             </select>
           </td>
-          <td><input type="number" min="0" step="50" value="${Math.max(0,+c.amount||0)}" data-ctype="amount" data-i="${idx}" /></td>
-          <td><input type="number" min="0" step="50" value="${Math.max(0,+c.total||0)}" data-ctype="total" data-i="${idx}" /></td>
-          <td><input type="number" min="1" step="1" value="${Math.max(1,+c.years||1)}" data-ctype="years" data-i="${idx}" /></td>
+          <td><input type="number" min="0" step="50" data-ctype="amount" data-i="${idx}" /></td>
+          <td><input type="number" min="0" step="50" data-ctype="total" data-i="${idx}" /></td>
+          <td><input type="number" min="1" step="1" data-ctype="years" data-i="${idx}" /></td>
           <td class="charge-annual">${fmtCurrency(annual)}</td>
           <td class="actions"><button class="remove-btn" data-action="remove-charge" data-i="${idx}">✕</button></td>
         `;
         els.chargesTbody.appendChild(tr);
+        // Set disabled/enabled and visible values after append
+        const row = els.chargesTbody.lastElementChild;
+        const amountEl = row.querySelector('input[data-ctype="amount"]');
+        const totalEl = row.querySelector('input[data-ctype="total"]');
+        const yearsEl = row.querySelector('input[data-ctype="years"]');
+        const isAmort = (c.type||'recurring') === 'amortized';
+        const isRecurring = !isAmort;
+        if (amountEl){ amountEl.disabled = !isRecurring; amountEl.value = isRecurring ? Math.max(0,+c.amount||0) : ''; }
+        if (totalEl){ totalEl.disabled = !isAmort; totalEl.value = isAmort ? Math.max(0,+c.total||0) : ''; }
+        if (yearsEl){ yearsEl.disabled = !isAmort; yearsEl.value = isAmort ? Math.max(1,+c.years||1) : ''; }
       } else {
         const row = els.chargesTbody.rows[idx];
         if (!row) return;
@@ -240,9 +257,11 @@
         const amountEl = row.querySelector('input[data-ctype="amount"]');
         const totalEl = row.querySelector('input[data-ctype="total"]');
         const yearsEl = row.querySelector('input[data-ctype="years"]');
-        if (amountEl) amountEl.value = Math.max(0,+c.amount||0);
-        if (totalEl) totalEl.value = Math.max(0,+c.total||0);
-        if (yearsEl) yearsEl.value = Math.max(1,+c.years||1);
+        const isAmort = (c.type||'recurring') === 'amortized';
+        const isRecurring = !isAmort;
+        if (amountEl){ amountEl.disabled = !isRecurring; amountEl.value = isRecurring ? Math.max(0,+c.amount||0) : ''; }
+        if (totalEl){ totalEl.disabled = !isAmort; totalEl.value = isAmort ? Math.max(0,+c.total||0) : ''; }
+        if (yearsEl){ yearsEl.disabled = !isAmort; yearsEl.value = isAmort ? Math.max(1,+c.years||1) : ''; }
         const annualCell = row.querySelector('.charge-annual');
         if (annualCell) annualCell.textContent = fmtCurrency(annual);
       }
@@ -427,6 +446,7 @@
   }
 
   function renderAll(){
+  renderPurchase();
     renderParticipants(true);
     renderCharges(true);
     renderAnnual();
@@ -545,12 +565,7 @@
       renderAnnual();
       renderWeeks();
     });
-    els.addAmortBtn.addEventListener('click', ()=>{
-      state.charges.push({ name: 'Amortissement', type: 'amortized', total: 0, years: 5 });
-      renderCharges(true);
-      renderAnnual();
-      renderWeeks();
-    });
+  // removed the dedicated amortization add button; use the type dropdown instead
     els.weeksTbody.addEventListener('input', (e)=>{
       if (e.target && e.target.tagName === 'SELECT') return;
       const i = +e.target.dataset.i;
