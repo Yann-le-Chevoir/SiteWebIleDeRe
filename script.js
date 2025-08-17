@@ -15,6 +15,12 @@
     v = Number.isFinite(+v) ? +v : min;
     return Math.min(max, Math.max(min, v));
   }
+  function showDefaultsError(msg){
+    const box = document.getElementById('defaultsError');
+    if (!box) return;
+    box.textContent = msg;
+    box.style.display = 'block';
+  }
   function fmtCurrency(v){
     const n = Number.isFinite(+v) ? +v : 0;
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
@@ -60,36 +66,34 @@
 
   // State
   const state = {
-    purchasePrice: 0,
-    amortYears: 25,
+    purchasePrice: undefined,
+    amortYears: undefined,
     participants: [], // {name, percent, loanCost}
     charges: [], // {name, type: 'recurring'|'amortized', amount|total+years}
-    year: new Date().getFullYear(),
+    year: undefined,
     weeks: [], // {index,label,dates,who,weight,revisedPrice}
-    categories: [
-      { name: 'Propriétaires', factorPct: 100 },
-      { name: 'Famille proche', factorPct: 100 },
-      { name: 'Famille', factorPct: 125 },
-      { name: 'Locataires externes', factorPct: 200 },
-    ],
+    categories: [],
     people: [], // {name, categoryName}
   };
 
   // Charges
   function chargeAnnualValue(c){
     if (!c) return 0;
-    if ((c.type||'recurring') === 'amortized'){
-      const total = Math.max(0, +c.total || 0);
-      const years = Math.max(1, +c.years || 1);
-      return total / years;
+    if (c.type === 'amortized'){
+      const total = Number.isFinite(+c.total) ? Math.max(0, +c.total) : 0;
+      const years = Number.isFinite(+c.years) && +c.years > 0 ? +c.years : 0;
+      return years > 0 ? (total / years) : 0;
     }
-    return Math.max(0, +c.amount || 0);
+    if (c.type === 'recurring'){
+      return Number.isFinite(+c.amount) ? Math.max(0, +c.amount) : 0;
+    }
+    return 0;
   }
 
   function computeAnnual(){
-    const price = Math.max(0, +state.purchasePrice || 0);
-    const years = Math.max(1, +state.amortYears || 1);
-    const amortAnnual = price / years;
+    const price = Number.isFinite(+state.purchasePrice) ? Math.max(0, +state.purchasePrice) : 0;
+    const yearsVal = Number.isFinite(+state.amortYears) ? +state.amortYears : 0;
+    const amortAnnual = (price > 0 && yearsVal > 0) ? (price / yearsVal) : 0;
     const chargesAnnual = state.charges.reduce((s,c)=> s + chargeAnnualValue(c), 0);
     const total = amortAnnual + chargesAnnual;
     return { amortAnnual, chargesAnnual, total };
@@ -117,8 +121,8 @@
       const sunday = new Date(monday.getTime() + 6*24*3600*1000);
       const label = `S${String(i+1).padStart(2,'0')}`;
       const dates = `${monday.getUTCDate().toString().padStart(2,'0')}/${(monday.getUTCMonth()+1).toString().padStart(2,'0')} – ${sunday.getUTCDate().toString().padStart(2,'0')}/${(sunday.getUTCMonth()+1).toString().padStart(2,'0')}`;
-      const prev = existingWeeks && existingWeeks[i] ? existingWeeks[i] : { who: '', weight: 100, revisedPrice: undefined };
-      weeks.push({ index: i+1, label, dates, who: prev.who||'', weight: clamp(+prev.weight||100,0,1000), revisedPrice: Number.isFinite(+prev.revisedPrice)?+prev.revisedPrice:undefined });
+      const prev = existingWeeks && existingWeeks[i] ? existingWeeks[i] : { who: '', weight: 0, revisedPrice: undefined };
+      weeks.push({ index: i+1, label, dates, who: prev.who||'', weight: Number.isFinite(+prev.weight)? clamp(+prev.weight,0,1000) : 0, revisedPrice: Number.isFinite(+prev.revisedPrice)?+prev.revisedPrice:undefined });
     }
     return weeks;
   }
@@ -135,9 +139,9 @@
       const usedWeek = (w.who||'').trim() !== '';
       if (!usedWeek) return 0;
       const weight = clamp(+w.weight || 0, 0, 1000);
-      const person = state.people.find(p=>p.name===w.who);
-      const cat = person ? state.categories.find(c=>c.name===person.categoryName) : null;
-      const factor = cat ? (cat.factorPct/100) : 1;
+  const person = state.people.find(p=>p.name===w.who);
+  const cat = person ? state.categories.find(c=>c.name===person.categoryName) : null;
+  const factor = (cat && Number.isFinite(+cat.factorPct)) ? (+cat.factorPct/100) : 1;
       const basePrice = (sumWeights > 0) ? base * (weight/100) : (total/(n||1));
       return basePrice * factor;
     });
@@ -170,8 +174,8 @@
 
   // Renders
   function renderPurchase(){
-    if (els.purchasePrice) els.purchasePrice.value = Math.max(0, +state.purchasePrice || 0);
-    if (els.amortYears) els.amortYears.value = Math.max(1, +state.amortYears || 1);
+    if (els.purchasePrice) els.purchasePrice.value = Number.isFinite(+state.purchasePrice) ? Math.max(0, +state.purchasePrice) : '';
+    if (els.amortYears) els.amortYears.value = Number.isFinite(+state.amortYears) ? Math.max(1, +state.amortYears) : '';
   }
   function renderAnnual(){
     const { amortAnnual, chargesAnnual, total } = computeAnnual();
@@ -184,17 +188,17 @@
   function renderParticipants(full=false){
     if (!els.participantsTbody) return;
     if (full) els.participantsTbody.innerHTML = '';
-    const purchaseTotal = Math.max(0, +state.purchasePrice || 0);
+    const purchaseTotal = Number.isFinite(+state.purchasePrice) ? Math.max(0, +state.purchasePrice) : 0;
     let sumPct = 0, sumAmt = 0;
     state.participants.forEach((p, idx) => {
-      const pct = clamp(+p.percent||0, 0, 100);
+      const pct = Number.isFinite(+p.percent) ? clamp(+p.percent, 0, 100) : 0;
       const share = purchaseTotal * (pct/100);
       sumPct += pct; sumAmt += share;
       if (full){
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td><input type="text" value="${p.name||''}" data-ptype="name" data-i="${idx}" /></td>
-          <td><input type="number" min="0" max="100" step="1" value="${pct}" data-ptype="percent" data-i="${idx}" /></td>
+          <td><input type="number" min="0" max="100" step="1" value="${Number.isFinite(+p.percent)?pct:''}" data-ptype="percent" data-i="${idx}" /></td>
           <td class="participant-share">${fmtCurrency(share)}</td>
           <td class="actions"><button class="remove-btn" data-action="remove-participant" data-i="${idx}">✕</button></td>
         `;
@@ -203,7 +207,7 @@
         const row = els.participantsTbody.rows[idx];
         if (!row) return;
         row.querySelector('input[data-ptype="name"]').value = p.name||'';
-        row.querySelector('input[data-ptype="percent"]').value = pct;
+        row.querySelector('input[data-ptype="percent"]').value = Number.isFinite(+p.percent)?pct:'';
         const shareCell = row.querySelector('.participant-share');
         if (shareCell) shareCell.textContent = fmtCurrency(share);
       }
@@ -228,7 +232,8 @@
           <td><input type="text" value="${c.name||''}" data-ctype="name" data-i="${idx}" /></td>
           <td>
             <select data-ctype="type" data-i="${idx}">
-              <option value="recurring" ${c.type!=='amortized'?'selected':''}>Récurrent</option>
+              <option value=""></option>
+              <option value="recurring" ${c.type==='recurring'?'selected':''}>Récurrent</option>
               <option value="amortized" ${c.type==='amortized'?'selected':''}>Amorti</option>
             </select>
           </td>
@@ -244,24 +249,24 @@
         const amountEl = row.querySelector('input[data-ctype="amount"]');
         const totalEl = row.querySelector('input[data-ctype="total"]');
         const yearsEl = row.querySelector('input[data-ctype="years"]');
-        const isAmort = (c.type||'recurring') === 'amortized';
-        const isRecurring = !isAmort;
-        if (amountEl){ amountEl.disabled = !isRecurring; amountEl.value = isRecurring ? Math.max(0,+c.amount||0) : ''; }
-        if (totalEl){ totalEl.disabled = !isAmort; totalEl.value = isAmort ? Math.max(0,+c.total||0) : ''; }
-        if (yearsEl){ yearsEl.disabled = !isAmort; yearsEl.value = isAmort ? Math.max(1,+c.years||1) : ''; }
+        const isAmort = c.type === 'amortized';
+        const isRecurring = c.type === 'recurring';
+        if (amountEl){ amountEl.disabled = !isRecurring; amountEl.value = (isRecurring && Number.isFinite(+c.amount)) ? Math.max(0,+c.amount) : ''; }
+        if (totalEl){ totalEl.disabled = !isAmort; totalEl.value = (isAmort && Number.isFinite(+c.total)) ? Math.max(0,+c.total) : ''; }
+        if (yearsEl){ yearsEl.disabled = !isAmort; yearsEl.value = (isAmort && Number.isFinite(+c.years)) ? Math.max(1,+c.years) : ''; }
       } else {
         const row = els.chargesTbody.rows[idx];
         if (!row) return;
         const sel = row.querySelector('select[data-ctype="type"]');
-        if (sel) sel.value = c.type||'recurring';
+        if (sel) sel.value = c.type || '';
         const amountEl = row.querySelector('input[data-ctype="amount"]');
         const totalEl = row.querySelector('input[data-ctype="total"]');
         const yearsEl = row.querySelector('input[data-ctype="years"]');
-        const isAmort = (c.type||'recurring') === 'amortized';
-        const isRecurring = !isAmort;
-        if (amountEl){ amountEl.disabled = !isRecurring; amountEl.value = isRecurring ? Math.max(0,+c.amount||0) : ''; }
-        if (totalEl){ totalEl.disabled = !isAmort; totalEl.value = isAmort ? Math.max(0,+c.total||0) : ''; }
-        if (yearsEl){ yearsEl.disabled = !isAmort; yearsEl.value = isAmort ? Math.max(1,+c.years||1) : ''; }
+        const isAmort = c.type === 'amortized';
+        const isRecurring = c.type === 'recurring';
+        if (amountEl){ amountEl.disabled = !isRecurring; amountEl.value = (isRecurring && Number.isFinite(+c.amount)) ? Math.max(0,+c.amount) : ''; }
+        if (totalEl){ totalEl.disabled = !isAmort; totalEl.value = (isAmort && Number.isFinite(+c.total)) ? Math.max(0,+c.total) : ''; }
+        if (yearsEl){ yearsEl.disabled = !isAmort; yearsEl.value = (isAmort && Number.isFinite(+c.years)) ? Math.max(1,+c.years) : ''; }
         const annualCell = row.querySelector('.charge-annual');
         if (annualCell) annualCell.textContent = fmtCurrency(annual);
       }
@@ -271,11 +276,12 @@
 
   function renderWeeks(full=false){
     if (!els.weeksTbody) return;
+  if (els.yearSelect) els.yearSelect.value = Number.isFinite(+state.year) ? state.year : '';
     if (full) els.weeksTbody.innerHTML = '';
-    const calc = computeWeeksPricing();
-    els.usedWeeks.textContent = String(calc.n);
-    els.sumWeights.textContent = fmtPct(calc.sumWeights);
-    els.baseWeekPrice.textContent = fmtCurrency(calc.base);
+  const calc = computeWeeksPricing();
+  els.usedWeeks.textContent = String(calc.n);
+  els.sumWeights.textContent = fmtPct(calc.sumWeights);
+  els.baseWeekPrice.textContent = fmtCurrency(calc.base);
 
     let sumWeeks = 0;
     state.weeks.forEach((w, idx) => {
@@ -288,7 +294,7 @@
         tr.innerHTML = `
           <td>${w.label || w.index}</td>
           <td>${w.dates || ''}</td>
-          <td><input type="number" min="0" step="5" value="${w.weight||0}" data-wtype="weight" data-i="${idx}" /></td>
+          <td><input type="number" min="0" step="5" value="${Number.isFinite(+w.weight)?w.weight:''}" data-wtype="weight" data-i="${idx}" /></td>
           <td>
             <select data-wtype="who" data-i="${idx}">
               <option value=""></option>
@@ -296,7 +302,7 @@
             </select>
           </td>
           <td class="week-suggested">${fmtCurrency(suggested)}</td>
-          <td><input type="number" min="0" step="10" value="${Number.isFinite(w.revisedPrice)?w.revisedPrice:''}" data-wtype="revised" data-i="${idx}" /></td>
+          <td><input type="number" min="0" step="10" value="${Number.isFinite(+w.revisedPrice)?w.revisedPrice:''}" data-wtype="revised" data-i="${idx}" /></td>
           <td class="week-price">${fmtCurrency(realPrice)}</td>
         `;
         els.weeksTbody.appendChild(tr);
@@ -304,14 +310,14 @@
         const row = els.weeksTbody.rows[idx];
         if (!row) return;
         const weightEl = row.querySelector('input[data-wtype="weight"]');
-        if (weightEl) weightEl.value = w.weight||0;
+        if (weightEl) weightEl.value = Number.isFinite(+w.weight)?w.weight:'';
         const whoEl = row.querySelector('select[data-wtype="who"]');
         if (whoEl) whoEl.value = w.who||'';
         const priceCell = row.querySelector('.week-price');
         const suggCell = row.querySelector('.week-suggested');
         const revisedInput = row.querySelector('input[data-wtype="revised"]');
         if (suggCell) suggCell.textContent = fmtCurrency(suggested);
-        if (revisedInput) revisedInput.value = Number.isFinite(w.revisedPrice)?w.revisedPrice:'';
+        if (revisedInput) revisedInput.value = Number.isFinite(+w.revisedPrice)?w.revisedPrice:'';
         if (priceCell) priceCell.textContent = fmtCurrency(realPrice);
       }
     });
@@ -326,7 +332,7 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td><input type="text" value="${c.name||''}" data-ctype="name" data-i="${idx}" /></td>
-          <td><input type="number" min="0" step="5" value="${c.factorPct||0}" data-ctype="factor" data-i="${idx}" /></td>
+          <td><input type="number" min="0" step="5" value="${Number.isFinite(+c.factorPct)?c.factorPct:''}" data-ctype="factor" data-i="${idx}" /></td>
           <td class="actions"><button class="remove-btn" data-action="remove-category" data-i="${idx}">✕</button></td>
         `;
         els.categoriesTbody.appendChild(tr);
@@ -334,7 +340,7 @@
         const row = els.categoriesTbody.rows[idx];
         if (!row) return;
         row.querySelector('input[data-ctype="name"]').value = c.name||'';
-        row.querySelector('input[data-ctype="factor"]').value = c.factorPct||0;
+        row.querySelector('input[data-ctype="factor"]').value = Number.isFinite(+c.factorPct)?c.factorPct:'';
       }
     });
   }
@@ -371,9 +377,9 @@
     els.participantsSummaryTbody.innerHTML = '';
     let sumPct = 0, sumShare = 0, sumLoan = 0, sumSelf = 0, sumRent = 0, sumRevenue = 0, sumNet = 0;
     state.participants.forEach((p, idx) => {
-      const pct = clamp(+p.percent||0, 0, 100);
+  const pct = Number.isFinite(+p.percent) ? clamp(+p.percent, 0, 100) : 0;
       const share = annualTotal * (pct/100);
-      const loan = Math.max(0, +p.loanCost || 0);
+  const loan = Number.isFinite(+p.loanCost) ? Math.max(0, +p.loanCost) : 0;
       const selfPaid = state.weeks.reduce((s,w,wi)=> s + ((w.who===p.name) ? (calc.realByIndex[wi]||0) : 0), 0);
       const rent = totalRents * (pct/100);
       const revenue = rent - selfPaid;
@@ -411,10 +417,10 @@
     const rents = calc.realByIndex.reduce((s,v)=>s+v,0);
     let sumPct = 0, sumShare = 0, sumLoan = 0, sumRent = 0, sumSelf = 0, sumRevenue = 0, sumNet = 0;
     state.participants.forEach((p, idx) => {
-      const pct = clamp(+p.percent||0, 0, 100);
+  const pct = Number.isFinite(+p.percent) ? clamp(+p.percent, 0, 100) : 0;
       sumPct += pct;
       const share = total * (pct/100);
-      const loan = Math.max(0, +p.loanCost || 0);
+  const loan = Number.isFinite(+p.loanCost) ? Math.max(0, +p.loanCost) : 0;
       const rent = rents * (pct/100);
       const selfPaid = state.weeks.reduce((s,w,wi)=> s + ((w.who===p.name) ? (calc.realByIndex[wi]||0) : 0), 0);
       const revenue = rent - selfPaid;
@@ -458,30 +464,37 @@
   // Events
   function attachEvents(){
     els.purchasePrice.addEventListener('input', (e)=>{
-      state.purchasePrice = Math.max(0, +e.target.value || 0);
+      state.purchasePrice = (e.target.value==='') ? undefined : Math.max(0, +e.target.value || 0);
       renderParticipants();
       renderAnnual();
       renderWeeks();
     });
     els.amortYears.addEventListener('input', (e)=>{
-      state.amortYears = Math.max(1, +e.target.value || 1);
+      state.amortYears = (e.target.value==='') ? undefined : Math.max(1, +e.target.value || 1);
       renderAnnual();
       renderWeeks();
     });
     els.yearSelect.addEventListener('change', (e)=>{
-      const yr = clamp(+e.target.value || new Date().getFullYear(), 1970, 2100);
-      state.year = yr;
+      const raw = +e.target.value;
+      if (!Number.isFinite(raw) || raw < 1970 || raw > 2100){
+        state.year = undefined;
+        state.weeks = [];
+        renderWeeks(true);
+        renderParticipantsSummary(computeAnnual().total);
+        return;
+      }
+      state.year = raw;
       const oldWeeks = state.weeks;
       state.weeks = buildWeeksForYear(state.year, oldWeeks);
       renderWeeks(true);
       renderParticipantsSummary(computeAnnual().total);
     });
-    els.participantsTbody.addEventListener('input', (e)=>{
+  els.participantsTbody.addEventListener('input', (e)=>{
       const i = +e.target.dataset.i;
       if (Number.isInteger(i)){
         const t = e.target.dataset.ptype;
         if (t === 'name') state.participants[i].name = e.target.value;
-        if (t === 'percent') state.participants[i].percent = clamp(+e.target.value || 0, 0, 100);
+    if (t === 'percent') state.participants[i].percent = (e.target.value==='') ? undefined : clamp(+e.target.value || 0, 0, 100);
         renderParticipants();
         renderAnnual();
       }
@@ -503,7 +516,7 @@
       }
     });
     els.addParticipantBtn.addEventListener('click', ()=>{
-      state.participants.push({ name: `P${state.participants.length+1}`, percent: 0, loanCost: 0 });
+      state.participants.push({ name: '', percent: undefined, loanCost: undefined });
       renderParticipants(true);
       renderAnnual();
     });
@@ -512,7 +525,7 @@
       if (Number.isInteger(i)){
         const t = e.target.dataset.ptype;
         if (t === 'loanCost') {
-          state.participants[i].loanCost = Math.max(0, +e.target.value || 0);
+          state.participants[i].loanCost = (e.target.value==='') ? undefined : Math.max(0, +e.target.value || 0);
           updateParticipantsSummaryFooter();
         }
       }
@@ -523,9 +536,9 @@
       if (Number.isInteger(i)){
         const t = e.target.dataset.ctype;
         if (t === 'name') state.charges[i].name = e.target.value;
-        if (t === 'amount') state.charges[i].amount = Math.max(0, +e.target.value || 0);
-        if (t === 'total') state.charges[i].total = Math.max(0, +e.target.value || 0);
-        if (t === 'years') state.charges[i].years = Math.max(1, +e.target.value || 1);
+        if (t === 'amount') state.charges[i].amount = (e.target.value==='') ? undefined : Math.max(0, +e.target.value || 0);
+        if (t === 'total') state.charges[i].total = (e.target.value==='') ? undefined : Math.max(0, +e.target.value || 0);
+        if (t === 'years') state.charges[i].years = (e.target.value==='') ? undefined : Math.max(1, +e.target.value || 1);
         renderCharges();
         renderAnnual();
         renderWeeks();
@@ -536,14 +549,8 @@
       if (!Number.isInteger(i)) return;
       const t = e.target.dataset.ctype;
       if (t === 'type'){
-        const val = e.target.value === 'amortized' ? 'amortized' : 'recurring';
+        const val = (e.target.value === 'amortized' || e.target.value === 'recurring') ? e.target.value : undefined;
         state.charges[i].type = val;
-        if (val === 'recurring'){
-          state.charges[i].amount = Math.max(0, +state.charges[i].amount || 0);
-        } else {
-          state.charges[i].total = Math.max(0, +state.charges[i].total || 0);
-          state.charges[i].years = Math.max(1, +state.charges[i].years || 1);
-        }
         renderCharges();
         renderAnnual();
         renderWeeks();
@@ -560,7 +567,7 @@
       }
     });
     els.addChargeBtn.addEventListener('click', ()=>{
-      state.charges.push({ name: 'Nouvelle charge', type: 'recurring', amount: 0 });
+      state.charges.push({});
       renderCharges(true);
       renderAnnual();
       renderWeeks();
@@ -571,8 +578,8 @@
       const i = +e.target.dataset.i;
       if (Number.isInteger(i)){
         const t = e.target.dataset.wtype;
-        if (t === 'weight') state.weeks[i].weight = clamp(+e.target.value || 0, 0, 1000);
-        if (t === 'revised') state.weeks[i].revisedPrice = +e.target.value;
+        if (t === 'weight') state.weeks[i].weight = (e.target.value==='') ? undefined : clamp(+e.target.value || 0, 0, 1000);
+        if (t === 'revised') state.weeks[i].revisedPrice = (e.target.value==='') ? undefined : +e.target.value;
         renderWeeks();
         renderParticipantsSummary(computeAnnual().total);
       }
@@ -589,8 +596,12 @@
       }
     });
     els.addCategoryBtn.addEventListener('click', ()=>{
-      state.categories.push({ name: `Catégorie ${state.categories.length+1}`, factorPct: 100 });
+      const newCatName = `Catégorie ${state.categories.length+1}`;
+      state.categories.push({ name: newCatName, factorPct: 100 });
+      // Add a default person tied to this new category
+      state.people.push({ name: `${newCatName} (défaut)`, categoryName: newCatName });
       renderCategories(true);
+      renderPeople(true);
       renderWeeks(true);
       renderParticipantsSummary(computeAnnual().total);
     });
@@ -599,7 +610,7 @@
       if (!Number.isInteger(i)) return;
       const t = e.target.dataset.ctype;
       if (t==='name') state.categories[i].name = e.target.value;
-      if (t==='factor') state.categories[i].factorPct = clamp(+e.target.value||0, 0, 1000);
+  if (t==='factor') state.categories[i].factorPct = (e.target.value==='') ? undefined : clamp(+e.target.value||0, 0, 1000);
       renderCategories();
       renderWeeks();
       renderParticipantsSummary(computeAnnual().total);
@@ -618,7 +629,7 @@
       renderParticipantsSummary(computeAnnual().total);
     });
     els.addPersonBtn.addEventListener('click', ()=>{
-      state.people.push({ name: `Personne ${state.people.length+1}`, categoryName: state.categories[0]?.name || '' });
+      state.people.push({ name: '', categoryName: '' });
       renderPeople(true);
       renderWeeks(true);
       renderParticipantsSummary(computeAnnual().total);
@@ -672,28 +683,32 @@
       try {
         const text = await file.text();
         const obj = JSON.parse(text);
-        state.purchasePrice = Math.max(0, +obj.purchasePrice || 0);
-        state.amortYears = Math.max(1, +obj.amortYears || 1);
-        state.participants = Array.isArray(obj.participants) ? obj.participants.map(p=>({ name: p.name||'', percent: clamp(+p.percent||0,0,100), loanCost: Math.max(0, +p.loanCost || 0) })) : [];
+        state.purchasePrice = Number.isFinite(+obj.purchasePrice) ? Math.max(0, +obj.purchasePrice) : undefined;
+        state.amortYears = Number.isFinite(+obj.amortYears) && +obj.amortYears>0 ? +obj.amortYears : undefined;
+        state.participants = Array.isArray(obj.participants) ? obj.participants.map(p=>({ name: p.name||'', percent: Number.isFinite(+p.percent)? clamp(+p.percent,0,100): undefined, loanCost: Number.isFinite(+p.loanCost)? Math.max(0, +p.loanCost) : undefined })) : [];
         state.charges = Array.isArray(obj.charges) ? obj.charges.map(c=>({
           name: c.name||'',
-          type: (c.type==='amortized') ? 'amortized' : 'recurring',
-          amount: Math.max(0,+c.amount||0),
-          total: Math.max(0,+c.total||0),
-          years: Math.max(1,+c.years||1)
+          type: (c.type==='amortized' || c.type==='recurring') ? c.type : undefined,
+          amount: Number.isFinite(+c.amount)? Math.max(0,+c.amount): undefined,
+          total: Number.isFinite(+c.total)? Math.max(0,+c.total): undefined,
+          years: Number.isFinite(+c.years) && +c.years>0 ? +c.years : undefined
         })) : [];
-        state.year = clamp(+obj.year || new Date().getFullYear(), 1970, 2100);
-        const weeksInYear = buildWeeksForYear(state.year);
-        if (Array.isArray(obj.weeks)){
-          state.weeks = weeksInYear.map((w,i)=>{
-            const src = obj.weeks[i] || {};
-            return { ...w, who: (src.who||''), weight: clamp(+src.weight||w.weight,0,1000), revisedPrice: Number.isFinite(+src.revisedPrice)?+src.revisedPrice:undefined };
-          });
+        state.year = Number.isFinite(+obj.year) ? clamp(+obj.year, 1970, 2100) : undefined;
+        if (Number.isFinite(state.year)){
+          const weeksInYear = buildWeeksForYear(state.year);
+          if (Array.isArray(obj.weeks)){
+            state.weeks = weeksInYear.map((w,i)=>{
+              const src = obj.weeks[i] || {};
+              return { ...w, who: (src.who||''), weight: Number.isFinite(+src.weight)? clamp(+src.weight,0,1000): undefined, revisedPrice: Number.isFinite(+src.revisedPrice)?+src.revisedPrice:undefined };
+            });
+          } else {
+            state.weeks = weeksInYear;
+          }
         } else {
-          state.weeks = weeksInYear;
+          state.weeks = [];
         }
-        if (Array.isArray(obj.categories)) state.categories = obj.categories.map(c=>({ name: c.name||'', factorPct: clamp(+c.factorPct||100, 0, 1000) }));
-        if (Array.isArray(obj.people)) state.people = obj.people.map(pr=>({ name: pr.name||'', categoryName: pr.categoryName|| (state.categories[0]?.name||'') }));
+        if (Array.isArray(obj.categories)) state.categories = obj.categories.map(c=>({ name: c.name||'', factorPct: Number.isFinite(+c.factorPct)? clamp(+c.factorPct, 0, 1000) : undefined }));
+        if (Array.isArray(obj.people)) state.people = obj.people.map(pr=>({ name: pr.name||'', categoryName: pr.categoryName|| '' }));
         renderAll();
       } catch(err){
         alert('Fichier JSON invalide.');
@@ -710,62 +725,36 @@
       const res = await fetch('defaults.json', { cache: 'no-store' });
       if (res.ok){
         const def = await res.json();
-        state.purchasePrice = Math.max(0, +def.purchasePrice || 0);
-        state.amortYears = Math.max(1, +def.amortYears || 25);
-        state.participants = Array.isArray(def.participants) ? def.participants.map(p=>({ name: p.name||'', percent: clamp(+p.percent||0,0,100), loanCost: Math.max(0, +p.loanCost || 0) })) : [];
-        state.charges = Array.isArray(def.charges) ? def.charges.map(c=>({
+        if ('purchasePrice' in def) state.purchasePrice = Number.isFinite(+def.purchasePrice)? Math.max(0, +def.purchasePrice) : undefined;
+        if ('amortYears' in def) state.amortYears = (Number.isFinite(+def.amortYears) && +def.amortYears>0) ? +def.amortYears : undefined;
+        if (Array.isArray(def.participants)) state.participants = def.participants.map(p=>({ name: p.name||'', percent: Number.isFinite(+p.percent)? clamp(+p.percent,0,100): undefined, loanCost: Number.isFinite(+p.loanCost)? Math.max(0, +p.loanCost) : undefined }));
+        if (Array.isArray(def.charges)) state.charges = def.charges.map(c=>({
           name: c.name||'',
-          type: (c.type==='amortized') ? 'amortized' : 'recurring',
-          amount: Math.max(0,+c.amount||0),
-          total: Math.max(0,+c.total||0),
-          years: Math.max(1,+c.years||1)
-        })) : [];
-        state.year = new Date().getFullYear();
-        const defaultWeight = def.weeksDefaults && Number.isFinite(+def.weeksDefaults.weight) ? +def.weeksDefaults.weight : 100;
-        state.weeks = buildWeeksForYear(state.year).map(w=>({ ...w, weight: defaultWeight }));
-        if (Array.isArray(def.categories) && def.categories.length) {
-          state.categories = def.categories.map(c=>({ name: c.name||'', factorPct: clamp(+c.factorPct||100, 0, 1000) }));
-        }
-        if (Array.isArray(def.people)) {
-          state.people = def.people.map(pr=>({ name: pr.name||'', categoryName: pr.categoryName|| (state.categories[0]?.name||'') }));
-        } else {
-          state.people = state.participants.map(p=>({ name: p.name||'', categoryName: 'Propriétaires' }));
+          type: (c.type==='amortized' || c.type==='recurring') ? c.type : undefined,
+          amount: Number.isFinite(+c.amount)? Math.max(0,+c.amount): undefined,
+          total: Number.isFinite(+c.total)? Math.max(0,+c.total): undefined,
+          years: Number.isFinite(+c.years) && +c.years>0 ? +c.years : undefined
+        }));
+        if ('year' in def && Number.isFinite(+def.year)) state.year = +def.year;
+        if (Array.isArray(def.categories)) state.categories = def.categories.map(c=>({ name: c.name||'', factorPct: Number.isFinite(+c.factorPct)? clamp(+c.factorPct, 0, 1000) : undefined }));
+        if (Array.isArray(def.people)) state.people = def.people.map(pr=>({ name: pr.name||'', categoryName: pr.categoryName|| '' }));
+        if (Number.isFinite(state.year)){
+          const w = buildWeeksForYear(state.year);
+          const defaultWeight = (def.weeksDefaults && Number.isFinite(+def.weeksDefaults.weight)) ? +def.weeksDefaults.weight : undefined;
+          state.weeks = w.map(week=> ({ ...week, weight: Number.isFinite(defaultWeight) ? defaultWeight : week.weight }));
         }
       } else {
-        // Fallback
-        state.purchasePrice = 500000;
-        state.amortYears = 25;
-        state.participants = [
-          { name: 'P1', percent: 25, loanCost: 0 },
-          { name: 'P2', percent: 25, loanCost: 0 },
-          { name: 'P3', percent: 50, loanCost: 0 },
-        ];
-        state.charges = [
-          { name: 'Eau', type: 'recurring', amount: 0 },
-          { name: 'Electricité', type: 'recurring', amount: 0 },
-          { name: "Taxe d'habitation", type: 'recurring', amount: 0 },
-        ];
-        state.year = new Date().getFullYear();
-        state.weeks = buildWeeksForYear(state.year);
-        state.people = state.participants.map(p=>({ name: p.name, categoryName: 'Propriétaires' }));
+        const hint = (location && location.protocol === 'file:')
+          ? "defaults.json n'a pas pu être chargé (ouvert en file://). Lancez la page via un petit serveur local (ex: VS Code Live Server) pour autoriser l'accès au fichier."
+          : "defaults.json n'a pas pu être chargé (réponse réseau non OK).";
+        showDefaultsError(hint);
       }
     } catch(e){
-      console.warn('defaults.json not loaded, using hardcoded defaults.', e);
-      state.purchasePrice = 500000;
-      state.amortYears = 25;
-      state.participants = [
-        { name: 'P1', percent: 25, loanCost: 0 },
-        { name: 'P2', percent: 25, loanCost: 0 },
-        { name: 'P3', percent: 50, loanCost: 0 },
-      ];
-      state.charges = [
-        { name: 'Eau', type: 'recurring', amount: 0 },
-        { name: 'Electricité', type: 'recurring', amount: 0 },
-        { name: "Taxe d'habitation", type: 'recurring', amount: 0 },
-      ];
-      state.year = new Date().getFullYear();
-      state.weeks = buildWeeksForYear(state.year);
-      state.people = state.participants.map(p=>({ name: p.name, categoryName: 'Propriétaires' }));
+      console.warn('defaults.json load failed:', e);
+      const hint = (location && location.protocol === 'file:')
+        ? "defaults.json n'a pas pu être chargé (ouvert en file://). Lancez la page via un petit serveur local (ex: VS Code Live Server) pour autoriser l'accès au fichier."
+        : "defaults.json n'a pas pu être chargé (erreur).";
+      showDefaultsError(hint);
     }
     renderAll();
     attachEvents();

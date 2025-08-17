@@ -1,15 +1,17 @@
 {
   "purchasePrice": 500000,
   "amortYears": 25,
+  "year": 2025,
   "participants": [
-  { "name": "P1", "percent": 25, "loanCost": 0 },
-  { "name": "P2", "percent": 25, "loanCost": 0 },
-  { "name": "P3", "percent": 50, "loanCost": 0 }
+    { "name": "P1", "percent": 25, "loanCost": 0 },
+    { "name": "P2", "percent": 25, "loanCost": 0 },
+    { "name": "P3", "percent": 50, "loanCost": 0 }
   ],
   "charges": [
     { "name": "Eau", "type": "recurring", "amount": 0 },
     { "name": "Electricité", "type": "recurring", "amount": 0 },
-    { "name": "Taxe d'habitation", "type": "recurring", "amount": 0 }
+    { "name": "Taxe d'habitation", "type": "recurring", "amount": 0 },
+    { "name": "Travaux (rénovation)", "type": "amortized", "total": 0, "years": 5 }
   ],
   "weeksDefaults": {
     "weight": 100
@@ -17,8 +19,15 @@
   "categories": [
     { "name": "Propriétaires", "factorPct": 100 },
     { "name": "Famille proche", "factorPct": 100 },
-  { "name": "Famille", "factorPct": 125 },
+    { "name": "Famille", "factorPct": 125 },
     { "name": "Locataires externes", "factorPct": 200 }
   ],
-  "people": []
+  "people": [
+    { "name": "P1", "categoryName": "Propriétaires" },
+    { "name": "P2", "categoryName": "Propriétaires" },
+  { "name": "P3", "categoryName": "Propriétaires" },
+  { "name": "Famille proche (défaut)", "categoryName": "Famille proche" },
+  { "name": "Famille (défaut)", "categoryName": "Famille" },
+  { "name": "Locataire externe (défaut)", "categoryName": "Locataires externes" }
+  ]
 }
