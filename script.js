@@ -87,6 +87,7 @@
   const CURRENT_KEY = 'houseSim.currentName.v1';
   let currentConfigName = null;
   let defaultTemplateState = null; // snapshot of defaults.json-loaded state
+  let remoteAPI = null; // if server detected
 
   function getAllConfigs(){
     try{ return JSON.parse(localStorage.getItem(CONFIGS_KEY)||'{}') || {}; }catch{return {}};
@@ -907,6 +908,81 @@
       setAllConfigs(allAtStart);
       if (!currentConfigName) setCurrentName('Défaut');
     }
+    // Try to detect a backend API
+    try{
+      const base = `${location.protocol}//${location.host}`;
+      const ping = await fetch(`${base}/api/configs`, { method: 'GET' });
+      if (ping.ok){
+        remoteAPI = {
+          async list(){ const r = await fetch(`${base}/api/configs`); return r.json(); },
+          async get(name){ const r = await fetch(`${base}/api/configs/${encodeURIComponent(name)}`); if(!r.ok) return null; return r.json(); },
+          async save(name, obj){ await fetch(`${base}/api/configs/${encodeURIComponent(name)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj)}); },
+          async remove(name){ await fetch(`${base}/api/configs/${encodeURIComponent(name)}`, { method:'DELETE' }); },
+        };
+        // If backend exists, hydrate selector from server and adjust handlers
+        const serverAll = await remoteAPI.list();
+        // Merge local 'Défaut' if server empty
+        if (serverAll && Object.keys(serverAll).length === 0 && allAtStart['Défaut']){
+          await remoteAPI.save('Défaut', allAtStart['Défaut']);
+        }
+        // Override storage funcs to use server
+        const serverCache = await remoteAPI.list();
+        // eslint-disable-next-line no-inner-declarations
+        function getAllConfigsServer(){ return serverCache; }
+        // eslint-disable-next-line no-inner-declarations
+        async function refreshServerCache(){ Object.assign(serverCache, await remoteAPI.list()); updateConfigSelect(); }
+        // Replace event handlers that touch storage to use API
+        els.newConfigBtn.onclick = async ()=>{
+          const name = promptName('Nouvelle config');
+          if (!name) return;
+          const tpl = getDefaultTemplate();
+          await remoteAPI.save(name, tpl);
+          await refreshServerCache();
+          setCurrentName(name);
+          applyObjectToState(tpl);
+        };
+        els.saveConfigBtn.onclick = async ()=>{
+          let name = currentConfigName;
+          if (!name){ name = promptName('Nom de la config'); if (!name) return; }
+          await remoteAPI.save(name, cloneState());
+          await refreshServerCache();
+          setCurrentName(name);
+          alert('Configuration sauvegardée.');
+        };
+        els.copyConfigBtn.onclick = async ()=>{
+          const name = promptName('Nom de la copie');
+          if (!name) return;
+          await remoteAPI.save(name, cloneState());
+          await refreshServerCache();
+          setCurrentName(name);
+          alert('Copie enregistrée.');
+        };
+        els.deleteConfigBtn.onclick = async ()=>{
+          if (!currentConfigName){ alert('Aucune configuration sélectionnée.'); return; }
+          if (currentConfigName === 'Défaut'){ alert('La configuration "Défaut" ne peut pas être supprimée.'); return; }
+          if (!confirm(`Supprimer la configuration "${currentConfigName}" ?`)) return;
+          await remoteAPI.remove(currentConfigName);
+          await refreshServerCache();
+          setCurrentName('Défaut');
+          const obj = await remoteAPI.get('Défaut');
+          if (obj) applyObjectToState(obj);
+        };
+        els.configSelect.onchange = async ()=>{
+          const selected = els.configSelect.value;
+          if (!selected) return;
+          const obj = await remoteAPI.get(selected);
+          if (!obj) return;
+          setCurrentName(selected);
+          applyObjectToState(obj);
+        };
+        // Use server cache for selector
+        updateConfigSelect = function(){
+          if (!els.configSelect) return;
+          const names = Object.keys(serverCache).sort((a,b)=>a.localeCompare(b,'fr'));
+          els.configSelect.innerHTML = names.map(n=>`<option value="${n}" ${n===currentConfigName?'selected':''}>${n}</option>`).join('');
+        };
+      }
+    } catch {}
     updateConfigSelect();
     if (currentConfigName){
       const all = getAllConfigs();
