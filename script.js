@@ -94,7 +94,7 @@
   let currentSource = 'local'; // 'local' | 'drive'
   let defaultTemplateState = null; // snapshot of defaults.json-loaded state
   let remoteAPI = null; // generic remote API (now Google Drive)
-  let gdriveCfg = { clientId: null, folderName: 'persoYann/SimulateurMaison', discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'], scope: 'https://www.googleapis.com/auth/drive.file' };
+  let gdriveCfg = { clientId: null, folderId: null, discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'], scope: 'https://www.googleapis.com/auth/drive.file' };
 
   function getAllConfigs(){
     try{ return JSON.parse(localStorage.getItem(CONFIGS_KEY)||'{}') || {}; }catch{return {}};
@@ -924,8 +924,8 @@
       const r = await fetch('gdrive.config.json', { cache: 'no-store' });
       if (r.ok){
         const cfg = await r.json();
-        if (cfg.clientId) gdriveCfg.clientId = cfg.clientId;
-        if (cfg.folderName) gdriveCfg.folderName = cfg.folderName;
+  if (cfg.clientId) gdriveCfg.clientId = cfg.clientId;
+  if (cfg.folderId) gdriveCfg.folderId = cfg.folderId;
         if (cfg.scope) gdriveCfg.scope = cfg.scope;
       }
     } catch {}
@@ -1075,8 +1075,10 @@
 
   function setupGoogleDriveUI(){
     if (!els.googleDriveConnectBtn || !els.googleDriveDisconnectBtn || !els.googleDriveStatus) return;
-  if (!gdriveCfg.clientId){ setGDriveStatus('Google Drive non configuré.'); }
+    if (!gdriveCfg.clientId){ setGDriveStatus('Google Drive non configuré.'); }
     toggleGDriveButtons(false);
+
+    let accessToken = null;
 
     els.googleDriveConnectBtn.addEventListener('click', async ()=>{
       try{
@@ -1086,41 +1088,51 @@
         }
         setGDriveStatus('Connexion à Google…');
         await loadGapi();
+        await loadGIS();
         const gapi = window.gapi;
         await new Promise((resolve, reject)=>{
-          gapi.load('client:auth2', async ()=>{
+          gapi.load('client', async ()=>{
             try {
-              await gapi.client.init({ clientId: gdriveCfg.clientId, discoveryDocs: gdriveCfg.discoveryDocs, scope: gdriveCfg.scope });
-              const auth = gapi.auth2.getAuthInstance();
-              if (!auth.isSignedIn.get()){
-                await auth.signIn();
-              }
+              await gapi.client.init({ discoveryDocs: gdriveCfg.discoveryDocs });
               resolve();
             } catch (e){ reject(e); }
           });
         });
-  setGDriveStatus('Connecté à Google Drive');
-  toggleGDriveButtons(true);
-  currentSource = 'drive';
+
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: gdriveCfg.clientId,
+          scope: gdriveCfg.scope,
+          callback: (resp)=>{
+            if (resp && resp.access_token){
+              accessToken = resp.access_token;
+              gapi.client.setToken({ access_token: accessToken });
+              setGDriveStatus('Connecté à Google Drive');
+              toggleGDriveButtons(true);
+              currentSource = 'drive';
+              afterConnected();
+            } else {
+              setGDriveStatus('Non connecté');
+            }
+          }
+        });
+        tokenClient.requestAccessToken({ prompt: 'consent' });
 
         async function ensureFolder(){
-          const folderPath = (gdriveCfg.folderName || 'SimulateurMaison').split('/').filter(Boolean);
-          let parentId = 'root';
-          for (const segment of folderPath){
-            const q = `name = '${segment.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and '${parentId}' in parents and trashed = false`;
-            let resp = await gapi.client.drive.files.list({ q, fields: 'files(id,name)' });
-            let node = (resp.result.files||[])[0];
-            if (!node){
-              resp = await gapi.client.drive.files.create({ resource: { name: segment, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }, fields: 'id' });
-              node = { id: resp.result.id };
-            }
-            parentId = node.id;
+          if (gdriveCfg.folderId) return gdriveCfg.folderId;
+          // Fallback: create/find a single app folder under root
+          const name = 'SimulateurMaison';
+          const q = `name = '${name}' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false`;
+          let resp = await gapi.client.drive.files.list({ q, fields: 'files(id,name)', includeItemsFromAllDrives: true, supportsAllDrives: true });
+          let node = (resp.result.files||[])[0];
+          if (!node){
+            resp = await gapi.client.drive.files.create({ resource: { name, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }, fields: 'id', supportsAllDrives: true });
+            node = { id: resp.result.id };
           }
-          return parentId;
+          return node.id;
         }
         async function list(){
           const folderId = await ensureFolder();
-          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and mimeType = 'application/json' and trashed = false`, fields: 'files(id,name)' });
+          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and mimeType = 'application/json' and trashed = false`, fields: 'files(id,name)', includeItemsFromAllDrives: true, supportsAllDrives: true });
           const out = {};
           for (const f of (resp.result.files||[])){
             const name = f.name.replace(/\.json$/i,'');
@@ -1135,44 +1147,54 @@
         async function get(name){
           const folderId = await ensureFolder();
           const filename = `${name}.json`;
-          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)' });
+          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)', includeItemsFromAllDrives: true, supportsAllDrives: true });
           const file = (resp.result.files||[])[0];
           if (!file) return null;
-          const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
+          const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media', supportsAllDrives: true });
           try{ return JSON.parse(download.body); } catch { return null; }
         }
         async function save(name, obj){
           const folderId = await ensureFolder();
           const filename = `${name}.json`;
           // Check if exists
-          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)' });
+          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)', includeItemsFromAllDrives: true, supportsAllDrives: true });
           const file = (resp.result.files||[])[0];
-          const metadata = { name: filename, mimeType: 'application/json', parents: [folderId] };
-          const boundary = '-------314159265358979323846';
-          const delimiter = `\r\n--${boundary}\r\n`;
-          const closeDelim = `\r\n--${boundary}--`;
-          const multipartBody =
-            delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-            JSON.stringify(metadata) +
-            delimiter + 'Content-Type: application/json\r\n\r\n' +
-            JSON.stringify(obj) +
-            closeDelim;
           if (file){
-            await gapi.client.request({ path: `/upload/drive/v3/files/${file.id}`, method: 'PATCH', params: { uploadType: 'multipart' }, headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipartBody });
+            // Update content only (do not touch parents on update)
+            await gapi.client.request({
+              path: `/upload/drive/v3/files/${file.id}`,
+              method: 'PATCH',
+              params: { uploadType: 'media', supportsAllDrives: true },
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(obj)
+            });
           } else {
-            await gapi.client.request({ path: '/upload/drive/v3/files', method: 'POST', params: { uploadType: 'multipart' }, headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipartBody });
+            // Create with parents and content
+            const metadata = { name: filename, mimeType: 'application/json', parents: [folderId] };
+            const boundary = '-------314159265358979323846';
+            const delimiter = `\r\n--${boundary}\r\n`;
+            const closeDelim = `\r\n--${boundary}--`;
+            const multipartBody =
+              delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+              JSON.stringify(metadata) +
+              delimiter + 'Content-Type: application/json\r\n\r\n' +
+              JSON.stringify(obj) +
+              closeDelim;
+            await gapi.client.request({ path: '/upload/drive/v3/files', method: 'POST', params: { uploadType: 'multipart', supportsAllDrives: true }, headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipartBody });
           }
         }
         async function remove(name){
           const folderId = await ensureFolder();
           const filename = `${name}.json`;
-          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)' });
+          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)', includeItemsFromAllDrives: true, supportsAllDrives: true });
           const file = (resp.result.files||[])[0];
-          if (file){ await gapi.client.drive.files.delete({ fileId: file.id }); }
+          if (file){ await gapi.client.drive.files.delete({ fileId: file.id, supportsAllDrives: true }); }
         }
-        const gdAPI = { list, get, save, remove };
-        const initial = await gdAPI.list();
-        switchToRemoteHandlers(gdAPI, initial);
+        async function afterConnected(){
+          const gdAPI = { list, get, save, remove };
+          const initial = await gdAPI.list();
+          switchToRemoteHandlers(gdAPI, initial);
+        }
       } catch (err){
         console.error(err);
         alert('Connexion Google Drive échouée.');
@@ -1184,9 +1206,10 @@
     els.googleDriveDisconnectBtn.addEventListener('click', async ()=>{
       setGDriveStatus('Déconnexion…');
       try{
-        const gapi = window.gapi || (await loadGapi());
-        const auth = gapi.auth2 && gapi.auth2.getAuthInstance && gapi.auth2.getAuthInstance();
-        if (auth) await auth.signOut();
+        await loadGIS();
+        if (accessToken && window.google && window.google.accounts && window.google.accounts.oauth2){
+          window.google.accounts.oauth2.revoke(accessToken, ()=>{});
+        }
       } catch {}
       location.reload();
     });
@@ -1203,5 +1226,17 @@
       document.head.appendChild(s);
     });
     return window.gapi;
+  }
+  async function loadGIS(){
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) return window.google;
+    await new Promise((resolve, reject)=>{
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true;
+      s.onload = resolve;
+      s.onerror = ()=>reject(new Error('GIS load failed'));
+      document.head.appendChild(s);
+    });
+    return window.google;
   }
 })();
