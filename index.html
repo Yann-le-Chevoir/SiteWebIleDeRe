@@ -10,8 +10,16 @@
     <header>
       <h1>Simulateur de coût d'une maison</h1>
       <div class="actions">
-        <button id="saveBtn" title="Télécharger un fichier JSON">💾 Save</button>
-        <label class="load-label" for="loadInput" title="Charger un JSON sauvegardé">📂 Load</label>
+        <div class="configs">
+          <label for="configSelect"><small>Configuration</small></label>
+          <select id="configSelect" title="Sélectionner une configuration"></select>
+          <button id="newConfigBtn" class="small" title="Nouvelle configuration">Nouveau</button>
+          <button id="saveConfigBtn" class="small" title="Sauver la configuration">Save</button>
+          <button id="copyConfigBtn" class="small" title="Copier/écraser une configuration">Copier</button>
+          <button id="deleteConfigBtn" class="small warn" title="Supprimer la configuration">Supprimer</button>
+        </div>
+        <button id="saveBtn" title="Exporter en JSON">💾 Export</button>
+        <label class="load-label" for="loadInput" title="Importer un JSON">📂 Import</label>
         <input id="loadInput" type="file" accept="application/json,.json" />
       </div>
   <div id="defaultsError" class="warn" style="display:none" aria-live="polite"></div>

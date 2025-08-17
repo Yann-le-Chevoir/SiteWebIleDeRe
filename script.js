@@ -62,6 +62,12 @@
   // addAmortBtn removed per request
     saveBtn: document.getElementById('saveBtn'),
     loadInput: document.getElementById('loadInput'),
+  // Config management UI
+  configSelect: document.getElementById('configSelect'),
+  newConfigBtn: document.getElementById('newConfigBtn'),
+  saveConfigBtn: document.getElementById('saveConfigBtn'),
+  copyConfigBtn: document.getElementById('copyConfigBtn'),
+  deleteConfigBtn: document.getElementById('deleteConfigBtn'),
   };
 
   // State
@@ -75,6 +81,75 @@
     categories: [],
     people: [], // {name, categoryName}
   };
+
+  // Config storage (localStorage)
+  const CONFIGS_KEY = 'houseSim.configs.v1';
+  const CURRENT_KEY = 'houseSim.currentName.v1';
+  let currentConfigName = null;
+  let defaultTemplateState = null; // snapshot of defaults.json-loaded state
+
+  function getAllConfigs(){
+    try{ return JSON.parse(localStorage.getItem(CONFIGS_KEY)||'{}') || {}; }catch{return {}};
+  }
+  function setAllConfigs(obj){
+    localStorage.setItem(CONFIGS_KEY, JSON.stringify(obj));
+  }
+  function setCurrentName(name){
+    currentConfigName = name || null;
+    if (name) localStorage.setItem(CURRENT_KEY, name); else localStorage.removeItem(CURRENT_KEY);
+  }
+  function loadCurrentName(){
+    const v = localStorage.getItem(CURRENT_KEY);
+    currentConfigName = v || null;
+  }
+  function updateConfigSelect(){
+    if (!els.configSelect) return;
+    const all = getAllConfigs();
+    const names = Object.keys(all).sort((a,b)=>a.localeCompare(b,'fr'));
+  els.configSelect.innerHTML = names.map(n=>`<option value="${n}" ${n===currentConfigName?'selected':''}>${n}</option>`).join('');
+  }
+  function getDefaultTemplate(){
+    const all = getAllConfigs();
+    return defaultTemplateState || all['Défaut'] || cloneState();
+  }
+  function promptName(defaultVal=''){
+    // Using window.prompt for simplicity
+    // eslint-disable-next-line no-alert
+    return window.prompt('Nom de la configuration', defaultVal || '');
+  }
+  function cloneState(){
+    return JSON.parse(JSON.stringify(state));
+  }
+  function applyObjectToState(obj){
+    // Adapted from the JSON import logic
+    state.purchasePrice = Number.isFinite(+obj.purchasePrice) ? Math.max(0, +obj.purchasePrice) : undefined;
+    state.amortYears = Number.isFinite(+obj.amortYears) && +obj.amortYears>0 ? +obj.amortYears : undefined;
+    state.participants = Array.isArray(obj.participants) ? obj.participants.map(p=>({ name: p.name||'', percent: Number.isFinite(+p.percent)? clamp(+p.percent,0,100): undefined, loanCost: Number.isFinite(+p.loanCost)? Math.max(0, +p.loanCost) : undefined })) : [];
+    state.charges = Array.isArray(obj.charges) ? obj.charges.map(c=>({
+      name: c.name||'',
+      type: (c.type==='amortized' || c.type==='recurring') ? c.type : undefined,
+      amount: Number.isFinite(+c.amount)? Math.max(0,+c.amount): undefined,
+      total: Number.isFinite(+c.total)? Math.max(0,+c.total): undefined,
+      years: Number.isFinite(+c.years) && +c.years>0 ? +c.years : undefined
+    })) : [];
+    state.year = Number.isFinite(+obj.year) ? clamp(+obj.year, 1970, 2100) : undefined;
+    if (Number.isFinite(state.year)){
+      const weeksInYear = buildWeeksForYear(state.year);
+      if (Array.isArray(obj.weeks)){
+        state.weeks = weeksInYear.map((w,i)=>{
+          const src = obj.weeks[i] || {};
+          return { ...w, who: (src.who||''), weight: Number.isFinite(+src.weight)? clamp(+src.weight,0,1000): undefined, revisedPrice: Number.isFinite(+src.revisedPrice)?+src.revisedPrice:undefined };
+        });
+      } else {
+        state.weeks = weeksInYear;
+      }
+    } else {
+      state.weeks = [];
+    }
+    if (Array.isArray(obj.categories)) state.categories = obj.categories.map(c=>({ name: c.name||'', factorPct: Number.isFinite(+c.factorPct)? clamp(+c.factorPct, 0, 1000) : undefined }));
+    if (Array.isArray(obj.people)) state.people = obj.people.map(pr=>({ name: pr.name||'', categoryName: pr.categoryName|| '' }));
+    renderAll();
+  }
 
   // Charges
   function chargeAnnualValue(c){
@@ -717,6 +792,72 @@
         e.target.value = '';
       }
     });
+
+    // Config management events
+    if (els.newConfigBtn) els.newConfigBtn.addEventListener('click', ()=>{
+      const name = promptName('Nouvelle config');
+      if (!name) return;
+      const all = getAllConfigs();
+      if (all[name]){
+        if (!confirm('Ce nom existe déjà. Écraser ?')) return;
+      }
+      // Create from default template
+      all[name] = JSON.parse(JSON.stringify(getDefaultTemplate()));
+      setAllConfigs(all);
+      setCurrentName(name);
+      updateConfigSelect();
+      applyObjectToState(all[name]);
+    });
+
+    if (els.saveConfigBtn) els.saveConfigBtn.addEventListener('click', ()=>{
+      let name = currentConfigName;
+      if (!name){
+        name = promptName('Nom de la config');
+        if (!name) return;
+      }
+      const all = getAllConfigs();
+      all[name] = cloneState();
+      setAllConfigs(all);
+      setCurrentName(name);
+      updateConfigSelect();
+      alert('Configuration sauvegardée.');
+    });
+
+    if (els.copyConfigBtn) els.copyConfigBtn.addEventListener('click', ()=>{
+      const name = promptName('Nom de la copie');
+      if (!name) return;
+      const all = getAllConfigs();
+      if (all[name]){
+        if (!confirm('Ce nom existe déjà. Écraser ?')) return;
+      }
+      all[name] = cloneState();
+      setAllConfigs(all);
+      setCurrentName(name);
+      updateConfigSelect();
+      alert('Copie enregistrée.');
+    });
+
+    if (els.deleteConfigBtn) els.deleteConfigBtn.addEventListener('click', ()=>{
+      if (!currentConfigName){ alert('Aucune configuration sélectionnée.'); return; }
+      if (currentConfigName === 'Défaut'){ alert('La configuration "Défaut" ne peut pas être supprimée.'); return; }
+      if (!confirm(`Supprimer la configuration "${currentConfigName}" ?`)) return;
+      const all = getAllConfigs();
+      delete all[currentConfigName];
+      setAllConfigs(all);
+      setCurrentName(null);
+      updateConfigSelect();
+      // Garder l'état actuel affiché, ou recharger défauts au choix. On garde tel quel.
+    });
+
+    if (els.configSelect) els.configSelect.addEventListener('change', ()=>{
+      const selected = els.configSelect.value;
+      if (!selected) return;
+      const all = getAllConfigs();
+      const obj = all[selected];
+      if (!obj) return;
+      setCurrentName(selected);
+      applyObjectToState(obj);
+    });
   }
 
   // Init from defaults.json
@@ -743,6 +884,8 @@
           const defaultWeight = (def.weeksDefaults && Number.isFinite(+def.weeksDefaults.weight)) ? +def.weeksDefaults.weight : undefined;
           state.weeks = w.map(week=> ({ ...week, weight: Number.isFinite(defaultWeight) ? defaultWeight : week.weight }));
         }
+        // Capture defaults template after applying defaults.json
+        defaultTemplateState = cloneState();
       } else {
         const hint = (location && location.protocol === 'file:')
           ? "defaults.json n'a pas pu être chargé (ouvert en file://). Lancez la page via un petit serveur local (ex: VS Code Live Server) pour autoriser l'accès au fichier."
@@ -755,6 +898,20 @@
         ? "defaults.json n'a pas pu être chargé (ouvert en file://). Lancez la page via un petit serveur local (ex: VS Code Live Server) pour autoriser l'accès au fichier."
         : "defaults.json n'a pas pu être chargé (erreur).";
       showDefaultsError(hint);
+    }
+    // Load config list and current selection; ensure 'Défaut' exists
+    loadCurrentName();
+    const allAtStart = getAllConfigs();
+    if (!allAtStart['Défaut']){
+      allAtStart['Défaut'] = defaultTemplateState ? JSON.parse(JSON.stringify(defaultTemplateState)) : cloneState();
+      setAllConfigs(allAtStart);
+      if (!currentConfigName) setCurrentName('Défaut');
+    }
+    updateConfigSelect();
+    if (currentConfigName){
+      const all = getAllConfigs();
+      const obj = all[currentConfigName];
+      if (obj) applyObjectToState(obj);
     }
     renderAll();
     attachEvents();
