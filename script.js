@@ -68,6 +68,11 @@
   saveConfigBtn: document.getElementById('saveConfigBtn'),
   copyConfigBtn: document.getElementById('copyConfigBtn'),
   deleteConfigBtn: document.getElementById('deleteConfigBtn'),
+  importLocalToDriveBtn: document.getElementById('importLocalToDriveBtn'),
+  // OneDrive UI
+  oneDriveConnectBtn: document.getElementById('oneDriveConnectBtn'),
+  oneDriveDisconnectBtn: document.getElementById('oneDriveDisconnectBtn'),
+  oneDriveStatus: document.getElementById('oneDriveStatus'),
   };
 
   // State
@@ -86,8 +91,10 @@
   const CONFIGS_KEY = 'houseSim.configs.v1';
   const CURRENT_KEY = 'houseSim.currentName.v1';
   let currentConfigName = null;
+  let currentSource = 'local'; // 'local' | 'drive'
   let defaultTemplateState = null; // snapshot of defaults.json-loaded state
-  let remoteAPI = null; // if server detected
+  let remoteAPI = null; // generic remote API (now Google Drive)
+  let gdriveCfg = { clientId: null, apiKey: null, folderName: 'SimulateurMaison', discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'], scope: 'https://www.googleapis.com/auth/drive.file' };
 
   function getAllConfigs(){
     try{ return JSON.parse(localStorage.getItem(CONFIGS_KEY)||'{}') || {}; }catch{return {}};
@@ -105,9 +112,9 @@
   }
   function updateConfigSelect(){
     if (!els.configSelect) return;
-    const all = getAllConfigs();
-    const names = Object.keys(all).sort((a,b)=>a.localeCompare(b,'fr'));
-  els.configSelect.innerHTML = names.map(n=>`<option value="${n}" ${n===currentConfigName?'selected':''}>${n}</option>`).join('');
+  const all = getAllConfigs();
+  const names = Object.keys(all).sort((a,b)=>a.localeCompare(b,'fr'));
+  els.configSelect.innerHTML = names.map(n=>`<option value="local::${n}" ${n===currentConfigName?'selected':''}>${n} (local)</option>`).join('');
   }
   function getDefaultTemplate(){
     const all = getAllConfigs();
@@ -852,12 +859,14 @@
       });
 
       if (els.configSelect) els.configSelect.addEventListener('change', ()=>{
-        const selected = els.configSelect.value;
+        let selected = els.configSelect.value;
         if (!selected) return;
+        if (selected.startsWith('local::')) selected = selected.slice('local::'.length);
         const all = getAllConfigs();
         const obj = all[selected];
         if (!obj) return;
         setCurrentName(selected);
+        currentSource = 'local';
         applyObjectToState(obj);
       });
     }
@@ -910,79 +919,15 @@
       setAllConfigs(allAtStart);
       if (!currentConfigName) setCurrentName('Défaut');
     }
-    // Try to detect a backend API
+    // Remove server persistence entirely (as requested) and load Google Drive config if present
     try{
-      const base = `${location.protocol}//${location.host}`;
-      const ping = await fetch(`${base}/api/configs`, { method: 'GET' });
-      if (ping.ok){
-        remoteAPI = {
-          async list(){ const r = await fetch(`${base}/api/configs`); return r.json(); },
-          async get(name){ const r = await fetch(`${base}/api/configs/${encodeURIComponent(name)}`); if(!r.ok) return null; return r.json(); },
-          async save(name, obj){ await fetch(`${base}/api/configs/${encodeURIComponent(name)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj)}); },
-          async remove(name){ await fetch(`${base}/api/configs/${encodeURIComponent(name)}`, { method:'DELETE' }); },
-        };
-        // If backend exists, hydrate selector from server and adjust handlers
-        const serverAll = await remoteAPI.list();
-        // Merge local 'Défaut' if server empty
-        if (serverAll && Object.keys(serverAll).length === 0 && allAtStart['Défaut']){
-          await remoteAPI.save('Défaut', allAtStart['Défaut']);
-        }
-        // Override storage funcs to use server
-        const serverCache = await remoteAPI.list();
-        // eslint-disable-next-line no-inner-declarations
-        function getAllConfigsServer(){ return serverCache; }
-        // eslint-disable-next-line no-inner-declarations
-        async function refreshServerCache(){ Object.assign(serverCache, await remoteAPI.list()); updateConfigSelect(); }
-        // Replace event handlers that touch storage to use API
-        els.newConfigBtn.onclick = async ()=>{
-          const name = promptName('Nouvelle config');
-          if (!name) return;
-          const tpl = getDefaultTemplate();
-          await remoteAPI.save(name, tpl);
-          await refreshServerCache();
-          setCurrentName(name);
-          applyObjectToState(tpl);
-        };
-        els.saveConfigBtn.onclick = async ()=>{
-          let name = currentConfigName;
-          if (!name){ name = promptName('Nom de la config'); if (!name) return; }
-          await remoteAPI.save(name, cloneState());
-          await refreshServerCache();
-          setCurrentName(name);
-          alert('Configuration sauvegardée.');
-        };
-        els.copyConfigBtn.onclick = async ()=>{
-          const name = promptName('Nom de la copie');
-          if (!name) return;
-          await remoteAPI.save(name, cloneState());
-          await refreshServerCache();
-          setCurrentName(name);
-          alert('Copie enregistrée.');
-        };
-        els.deleteConfigBtn.onclick = async ()=>{
-          if (!currentConfigName){ alert('Aucune configuration sélectionnée.'); return; }
-          if (currentConfigName === 'Défaut'){ alert('La configuration "Défaut" ne peut pas être supprimée.'); return; }
-          if (!confirm(`Supprimer la configuration "${currentConfigName}" ?`)) return;
-          await remoteAPI.remove(currentConfigName);
-          await refreshServerCache();
-          setCurrentName('Défaut');
-          const obj = await remoteAPI.get('Défaut');
-          if (obj) applyObjectToState(obj);
-        };
-        els.configSelect.onchange = async ()=>{
-          const selected = els.configSelect.value;
-          if (!selected) return;
-          const obj = await remoteAPI.get(selected);
-          if (!obj) return;
-          setCurrentName(selected);
-          applyObjectToState(obj);
-        };
-        // Use server cache for selector
-        updateConfigSelect = function(){
-          if (!els.configSelect) return;
-          const names = Object.keys(serverCache).sort((a,b)=>a.localeCompare(b,'fr'));
-          els.configSelect.innerHTML = names.map(n=>`<option value="${n}" ${n===currentConfigName?'selected':''}>${n}</option>`).join('');
-        };
+      const r = await fetch('gdrive.config.json', { cache: 'no-store' });
+      if (r.ok){
+        const cfg = await r.json();
+        if (cfg.clientId) gdriveCfg.clientId = cfg.clientId;
+        if (cfg.apiKey) gdriveCfg.apiKey = cfg.apiKey;
+        if (cfg.folderName) gdriveCfg.folderName = cfg.folderName;
+        if (cfg.scope) gdriveCfg.scope = cfg.scope;
       }
     } catch {}
     updateConfigSelect();
@@ -993,7 +938,268 @@
     }
     renderAll();
     attachEvents();
+  setupGoogleDriveUI();
   }
 
   init();
+
+  // ============ Google Drive Integration (optional) ============
+  function setGDriveStatus(text, show=true){
+    if (!els.googleDriveStatus) return;
+    els.googleDriveStatus.textContent = text || '';
+    els.googleDriveStatus.style.display = show && text ? 'inline' : 'none';
+  }
+  function toggleGDriveButtons(connected){
+    if (els.googleDriveConnectBtn) els.googleDriveConnectBtn.style.display = connected ? 'none' : '';
+    if (els.googleDriveDisconnectBtn) els.googleDriveDisconnectBtn.style.display = connected ? '' : 'none';
+  }
+  function replaceNode(node){
+    if (!node || !node.parentNode) return node;
+    const clone = node.cloneNode(true);
+    node.parentNode.replaceChild(clone, node);
+    return clone;
+  }
+  function switchToRemoteHandlers(api, initialCache){
+    remoteAPI = api;
+    // Remove previous listeners by replacing nodes
+    els.newConfigBtn = replaceNode(els.newConfigBtn);
+    els.saveConfigBtn = replaceNode(els.saveConfigBtn);
+    els.copyConfigBtn = replaceNode(els.copyConfigBtn);
+    els.deleteConfigBtn = replaceNode(els.deleteConfigBtn);
+    els.configSelect = replaceNode(els.configSelect);
+
+    const serverCache = initialCache || {};
+    async function refreshServerCache(){
+      const all = await remoteAPI.list();
+      // Replace content of serverCache
+      for (const k of Object.keys(serverCache)) delete serverCache[k];
+      Object.assign(serverCache, all || {});
+      updateConfigSelect();
+    }
+    // Override selector renderer to use remote cache
+    updateConfigSelect = function(){
+      if (!els.configSelect) return;
+      const local = getAllConfigs();
+      const localNames = Object.keys(local).sort((a,b)=>a.localeCompare(b,'fr'));
+      const driveNames = Object.keys(serverCache).sort((a,b)=>a.localeCompare(b,'fr'));
+      const opts = [
+        ...localNames.map(n=>`<option value="local::${n}" ${currentConfigName===n&&currentSource==='local'?'selected':''}>${n} (local)</option>`),
+        ...driveNames.map(n=>`<option value="drive::${n}" ${currentConfigName===n&&currentSource==='drive'?'selected':''}>${n} (drive)</option>`)
+      ];
+      els.configSelect.innerHTML = opts.join('');
+      if (els.importLocalToDriveBtn) els.importLocalToDriveBtn.style.display = '';
+    };
+
+    // Wire events to remote
+    els.newConfigBtn.onclick = async ()=>{
+      const name = promptName('Nouvelle config');
+      if (!name) return;
+      const tpl = getDefaultTemplate();
+      await remoteAPI.save(name, tpl);
+      await refreshServerCache();
+      setCurrentName(name);
+      currentSource = 'drive';
+      applyObjectToState(tpl);
+    };
+    els.saveConfigBtn.onclick = async ()=>{
+      let name = currentConfigName;
+      if (!name){ name = promptName('Nom de la config'); if (!name) return; }
+      await remoteAPI.save(name, cloneState());
+      await refreshServerCache();
+      setCurrentName(name);
+      currentSource = 'drive';
+      alert('Configuration sauvegardée.');
+    };
+    els.copyConfigBtn.onclick = async ()=>{
+      const name = promptName('Nom de la copie');
+      if (!name) return;
+      await remoteAPI.save(name, cloneState());
+      await refreshServerCache();
+      setCurrentName(name);
+      currentSource = 'drive';
+      alert('Copie enregistrée.');
+    };
+    els.deleteConfigBtn.onclick = async ()=>{
+      if (!currentConfigName){ alert('Aucune configuration sélectionnée.'); return; }
+      if (currentConfigName === 'Défaut'){ alert('La configuration "Défaut" ne peut pas être supprimée.'); return; }
+      if (!confirm(`Supprimer la configuration "${currentConfigName}" ?`)) return;
+      await remoteAPI.remove(currentConfigName);
+      await refreshServerCache();
+      setCurrentName('Défaut');
+      currentSource = 'drive';
+      const obj = await remoteAPI.get('Défaut');
+      if (obj) applyObjectToState(obj);
+    };
+    if (els.importLocalToDriveBtn){
+      els.importLocalToDriveBtn.onclick = async ()=>{
+        const local = getAllConfigs();
+        const names = Object.keys(local).sort((a,b)=>a.localeCompare(b,'fr'));
+        const choice = promptName(`Nom local à copier vers Drive (disponibles: ${names.join(', ')})`);
+        if (!choice) return;
+        if (!local[choice]){ alert('Nom local introuvable.'); return; }
+        await remoteAPI.save(choice, local[choice]);
+        await refreshServerCache();
+        setCurrentName(choice);
+        currentSource = 'drive';
+        alert('Copié sur Drive.');
+      };
+    }
+    els.configSelect.onchange = async ()=>{
+      const selected = els.configSelect.value;
+      if (!selected) return;
+      const [src, name] = selected.split('::');
+      if (src === 'local'){
+        const all = getAllConfigs();
+        const obj = all[name];
+        if (!obj) return;
+        setCurrentName(name);
+        currentSource = 'local';
+        applyObjectToState(obj);
+      } else if (src === 'drive'){
+        const obj = await remoteAPI.get(name);
+        if (!obj) return;
+        setCurrentName(name);
+        currentSource = 'drive';
+        applyObjectToState(obj);
+      }
+    };
+
+    // Initial cache
+  (async ()=>{
+      if (!initialCache || Object.keys(initialCache).length === 0){
+        await refreshServerCache();
+      } else {
+        updateConfigSelect();
+      }
+    })();
+  }
+
+  function setupGoogleDriveUI(){
+    if (!els.googleDriveConnectBtn || !els.googleDriveDisconnectBtn || !els.googleDriveStatus) return;
+    if (!gdriveCfg.clientId || !gdriveCfg.apiKey){
+      setGDriveStatus('Google Drive non configuré.');
+    }
+    toggleGDriveButtons(false);
+
+    els.googleDriveConnectBtn.addEventListener('click', async ()=>{
+      try{
+        if (!gdriveCfg.clientId || !gdriveCfg.apiKey){
+          alert('Google Drive n\'est pas configuré. Renseignez gdrive.config.json (clientId, apiKey).');
+          return;
+        }
+        setGDriveStatus('Connexion à Google…');
+        await loadGapi();
+        const gapi = window.gapi;
+        await new Promise((resolve, reject)=>{
+          gapi.load('client:auth2', async ()=>{
+            try {
+              await gapi.client.init({ apiKey: gdriveCfg.apiKey, clientId: gdriveCfg.clientId, discoveryDocs: gdriveCfg.discoveryDocs, scope: gdriveCfg.scope });
+              const auth = gapi.auth2.getAuthInstance();
+              if (!auth.isSignedIn.get()){
+                await auth.signIn();
+              }
+              resolve();
+            } catch (e){ reject(e); }
+          });
+        });
+  setGDriveStatus('Connecté à Google Drive');
+  toggleGDriveButtons(true);
+  currentSource = 'drive';
+
+        async function ensureFolder(){
+          const name = gdriveCfg.folderName || 'SimulateurMaison';
+          // Find folder
+          const q = `name = '${name.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false`;
+          let resp = await gapi.client.drive.files.list({ q, fields: 'files(id,name)' });
+          if (resp.result.files && resp.result.files[0]) return resp.result.files[0].id;
+          // Create folder
+          resp = await gapi.client.drive.files.create({ resource: { name, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }, fields: 'id' });
+          return resp.result.id;
+        }
+        async function list(){
+          const folderId = await ensureFolder();
+          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and mimeType = 'application/json' and trashed = false`, fields: 'files(id,name)' });
+          const out = {};
+          for (const f of (resp.result.files||[])){
+            const name = f.name.replace(/\.json$/i,'');
+            out[name] = { __placeholder: true };
+          }
+          if (Object.keys(out).length === 0){
+            await save('Défaut', getDefaultTemplate());
+            return { 'Défaut': getDefaultTemplate() };
+          }
+          return out;
+        }
+        async function get(name){
+          const folderId = await ensureFolder();
+          const filename = `${name}.json`;
+          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)' });
+          const file = (resp.result.files||[])[0];
+          if (!file) return null;
+          const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
+          try{ return JSON.parse(download.body); } catch { return null; }
+        }
+        async function save(name, obj){
+          const folderId = await ensureFolder();
+          const filename = `${name}.json`;
+          // Check if exists
+          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)' });
+          const file = (resp.result.files||[])[0];
+          const metadata = { name: filename, mimeType: 'application/json', parents: [folderId] };
+          const boundary = '-------314159265358979323846';
+          const delimiter = `\r\n--${boundary}\r\n`;
+          const closeDelim = `\r\n--${boundary}--`;
+          const multipartBody =
+            delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+            JSON.stringify(metadata) +
+            delimiter + 'Content-Type: application/json\r\n\r\n' +
+            JSON.stringify(obj) +
+            closeDelim;
+          if (file){
+            await gapi.client.request({ path: `/upload/drive/v3/files/${file.id}`, method: 'PATCH', params: { uploadType: 'multipart' }, headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipartBody });
+          } else {
+            await gapi.client.request({ path: '/upload/drive/v3/files', method: 'POST', params: { uploadType: 'multipart' }, headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipartBody });
+          }
+        }
+        async function remove(name){
+          const folderId = await ensureFolder();
+          const filename = `${name}.json`;
+          const resp = await gapi.client.drive.files.list({ q: `'${folderId}' in parents and name = '${filename.replace(/'/g, "\\'")}' and trashed = false`, fields: 'files(id,name)' });
+          const file = (resp.result.files||[])[0];
+          if (file){ await gapi.client.drive.files.delete({ fileId: file.id }); }
+        }
+        const gdAPI = { list, get, save, remove };
+        const initial = await gdAPI.list();
+        switchToRemoteHandlers(gdAPI, initial);
+      } catch (err){
+        console.error(err);
+        alert('Connexion Google Drive échouée.');
+        setGDriveStatus('Erreur de connexion');
+        toggleGDriveButtons(false);
+      }
+    });
+
+    els.googleDriveDisconnectBtn.addEventListener('click', async ()=>{
+      setGDriveStatus('Déconnexion…');
+      try{
+        const gapi = window.gapi || (await loadGapi());
+        const auth = gapi.auth2 && gapi.auth2.getAuthInstance && gapi.auth2.getAuthInstance();
+        if (auth) await auth.signOut();
+      } catch {}
+      location.reload();
+    });
+  }
+
+  async function loadGapi(){
+    if (window.gapi && window.gapi.client) return window.gapi;
+    await new Promise((resolve, reject)=>{
+      const s = document.createElement('script');
+      s.src = 'https://apis.google.com/js/api.js';
+      s.async = true;
+      s.onload = resolve;
+      s.onerror = ()=>reject(new Error('GAPI load failed'));
+      document.head.appendChild(s);
+    });
+    return window.gapi;
+  }
 })();

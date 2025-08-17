@@ -19,35 +19,22 @@ Utilisez l’extension VS Code "Live Server":
 3. Cliquez droit sur `index.html` > "Open with Live Server".
 4. Le navigateur s’ouvre sur http://127.0.0.1:5500 et les modifications sont rechargées automatiquement.
 
-## Déployer avec persistance (Render)
+## Persistance via Google Drive (recommandé)
 
-Cette app inclut un petit serveur Node/Express qui sert les fichiers statiques et gère une API de persistance des configurations (fichier `data/configs.json`).
+Vous pouvez connecter Google Drive pour enregistrer/charger les configurations (JSON) dans un dossier personnel.
 
-### Déploiement Render (gratuit/Starter)
+Configuration:
 
-1. Poussez ce repo sur GitHub (branch `main`).
-2. Créez un service Web sur https://render.com :
-	 - Repository: ce dépôt
-	 - Branch: main
-	 - Runtime: Node
-	 - Build Command: `npm install`
-	 - Start Command: `node server.js`
-	 - Environment: `PORT` est fourni par Render automatiquement
-3. L’app écoute sur `0.0.0.0:${PORT}` (déjà configuré).
-4. Une fois déployé, Render expose une URL publique, par ex. `https://votre-app.onrender.com/`.
+1. Créez un projet Google Cloud Console, activez l’API Google Drive.
+2. Créez des identifiants OAuth client (type Web) et une clé API.
+3. Ajoutez votre URL (ex: `http://127.0.0.1:5500/` en local) aux URIs autorisés.
+4. Éditez `gdrive.config.json` et renseignez `clientId` et `apiKey`. Optionnel: `folderName`.
+5. Rechargez la page et cliquez sur “Google Drive: Connexion”.
 
-### Persistance
+Détails:
 
-- Render utilise un système de fichier éphémère sur les plans gratuits. Pour garder `data/configs.json` entre redéploiements/arrêts, utilisez un disque persistant:
-	- Render > votre service > Disks > Add Disk
-	- Name: `data`, Mount Path: `/opt/render/project/src/data`, Size: 1GB (ou plus)
-	- L’app écrira `data/configs.json` dans ce dossier monté.
+- Les configs sont des fichiers JSON dans le dossier Google Drive (par défaut `SimulateurMaison`).
+- Le sélecteur bascule sur Drive une fois connecté (Nouveau/Save/Copier/Supprimer).
+- Déconnexion: bouton “Déconnexion”.
 
-### Test
-
-- Ouvrez l’URL Render et utilisez le sélecteur de configuration (Nouveau/Save/Copier/Supprimer). Les données seront persistées côté serveur (fichier `data/configs.json`).
-
-### Remarques
-
-- Sur un hébergement statique (GitHub Pages), la persistance retombe sur localStorage.
-- Avec le serveur Node (Render, VPS…), le frontend détecte l’API `/api/configs` et bascule automatiquement en mode persistant.
+Note: l’ancienne persistance serveur est supprimée par défaut. Vous pouvez encore l’utiliser en servant `server.js` si besoin, mais ce n’est plus nécessaire pour Drive.
