@@ -794,71 +794,73 @@
       }
     });
 
-    // Config management events
-    if (els.newConfigBtn) els.newConfigBtn.addEventListener('click', ()=>{
-      const name = promptName('Nouvelle config');
-      if (!name) return;
-      const all = getAllConfigs();
-      if (all[name]){
-        if (!confirm('Ce nom existe déjà. Écraser ?')) return;
-      }
-      // Create from default template
-      all[name] = JSON.parse(JSON.stringify(getDefaultTemplate()));
-      setAllConfigs(all);
-      setCurrentName(name);
-      updateConfigSelect();
-      applyObjectToState(all[name]);
-    });
-
-    if (els.saveConfigBtn) els.saveConfigBtn.addEventListener('click', ()=>{
-      let name = currentConfigName;
-      if (!name){
-        name = promptName('Nom de la config');
+    // Config management events (localStorage mode only)
+    if (!remoteAPI){
+      if (els.newConfigBtn) els.newConfigBtn.addEventListener('click', ()=>{
+        const name = promptName('Nouvelle config');
         if (!name) return;
-      }
-      const all = getAllConfigs();
-      all[name] = cloneState();
-      setAllConfigs(all);
-      setCurrentName(name);
-      updateConfigSelect();
-      alert('Configuration sauvegardée.');
-    });
+        const all = getAllConfigs();
+        if (all[name]){
+          if (!confirm('Ce nom existe déjà. Écraser ?')) return;
+        }
+        // Create from default template
+        all[name] = JSON.parse(JSON.stringify(getDefaultTemplate()));
+        setAllConfigs(all);
+        setCurrentName(name);
+        updateConfigSelect();
+        applyObjectToState(all[name]);
+      });
 
-    if (els.copyConfigBtn) els.copyConfigBtn.addEventListener('click', ()=>{
-      const name = promptName('Nom de la copie');
-      if (!name) return;
-      const all = getAllConfigs();
-      if (all[name]){
-        if (!confirm('Ce nom existe déjà. Écraser ?')) return;
-      }
-      all[name] = cloneState();
-      setAllConfigs(all);
-      setCurrentName(name);
-      updateConfigSelect();
-      alert('Copie enregistrée.');
-    });
+      if (els.saveConfigBtn) els.saveConfigBtn.addEventListener('click', ()=>{
+        let name = currentConfigName;
+        if (!name){
+          name = promptName('Nom de la config');
+          if (!name) return;
+        }
+        const all = getAllConfigs();
+        all[name] = cloneState();
+        setAllConfigs(all);
+        setCurrentName(name);
+        updateConfigSelect();
+        alert('Configuration sauvegardée.');
+      });
 
-    if (els.deleteConfigBtn) els.deleteConfigBtn.addEventListener('click', ()=>{
-      if (!currentConfigName){ alert('Aucune configuration sélectionnée.'); return; }
-      if (currentConfigName === 'Défaut'){ alert('La configuration "Défaut" ne peut pas être supprimée.'); return; }
-      if (!confirm(`Supprimer la configuration "${currentConfigName}" ?`)) return;
-      const all = getAllConfigs();
-      delete all[currentConfigName];
-      setAllConfigs(all);
-      setCurrentName(null);
-      updateConfigSelect();
-      // Garder l'état actuel affiché, ou recharger défauts au choix. On garde tel quel.
-    });
+      if (els.copyConfigBtn) els.copyConfigBtn.addEventListener('click', ()=>{
+        const name = promptName('Nom de la copie');
+        if (!name) return;
+        const all = getAllConfigs();
+        if (all[name]){
+          if (!confirm('Ce nom existe déjà. Écraser ?')) return;
+        }
+        all[name] = cloneState();
+        setAllConfigs(all);
+        setCurrentName(name);
+        updateConfigSelect();
+        alert('Copie enregistrée.');
+      });
 
-    if (els.configSelect) els.configSelect.addEventListener('change', ()=>{
-      const selected = els.configSelect.value;
-      if (!selected) return;
-      const all = getAllConfigs();
-      const obj = all[selected];
-      if (!obj) return;
-      setCurrentName(selected);
-      applyObjectToState(obj);
-    });
+      if (els.deleteConfigBtn) els.deleteConfigBtn.addEventListener('click', ()=>{
+        if (!currentConfigName){ alert('Aucune configuration sélectionnée.'); return; }
+        if (currentConfigName === 'Défaut'){ alert('La configuration "Défaut" ne peut pas être supprimée.'); return; }
+        if (!confirm(`Supprimer la configuration "${currentConfigName}" ?`)) return;
+        const all = getAllConfigs();
+        delete all[currentConfigName];
+        setAllConfigs(all);
+        setCurrentName(null);
+        updateConfigSelect();
+        // Garder l'état actuel affiché, ou recharger défauts au choix. On garde tel quel.
+      });
+
+      if (els.configSelect) els.configSelect.addEventListener('change', ()=>{
+        const selected = els.configSelect.value;
+        if (!selected) return;
+        const all = getAllConfigs();
+        const obj = all[selected];
+        if (!obj) return;
+        setCurrentName(selected);
+        applyObjectToState(obj);
+      });
+    }
   }
 
   // Init from defaults.json
