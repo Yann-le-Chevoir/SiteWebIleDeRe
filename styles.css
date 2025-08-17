@@ -11,7 +11,7 @@
 html, body{ margin:0; padding:0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 header{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg); z-index:10; }
 header h1{ margin:0; font-size:20px; }
-header .actions{ display:flex; gap:10px; align-items:center; }
+header .actions{ display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
 #loadInput{ display:none; }
 .load-label, button{ cursor:pointer; border:1px solid var(--border); background:#0b1020; color:var(--text); padding:8px 12px; border-radius:8px; }
 button.small{ padding:6px 10px; font-size:12px; }
@@ -27,6 +27,27 @@ main{ padding: 20px; display:flex; flex-direction:column; gap:20px; max-width:11
 .grid.three{ grid-template-columns: repeat(3, minmax(0,1fr)); }
 .grid.four{ grid-template-columns: repeat(4, minmax(0,1fr)); }
 @media (max-width: 800px){ .grid.two, .grid.three, .grid.four{ grid-template-columns: 1fr; } }
+.configs{ display:flex; flex-wrap: wrap; gap:8px; align-items:center; }
+.configs label{ font-size:12px; }
+.configs select{ min-width: 220px; }
+
+@media (max-width: 600px){
+  header{ flex-direction: column; align-items: stretch; padding:12px; gap:8px; }
+  header h1{ font-size:16px; }
+  .card{ padding:12px; }
+  button.small{ padding:6px 8px; font-size:12px; }
+  .metric .value{ font-size:16px; }
+  /* Make all tables horizontally scrollable on small screens */
+  table{ display:block; overflow-x:auto; -webkit-overflow-scrolling: touch; }
+  th, td{ white-space: nowrap; }
+  .weeks-table-container{ max-height: 50vh; }
+}
+
+@media (max-width: 420px){
+  /* Hide Dates column in weeks table to save space on very small screens */
+  .weeks th:nth-child(2),
+  .weeks td:nth-child(2){ display:none; }
+}
 .participants-header, .charges-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0 10px; }
 .warn{ color:#fde68a; min-height:1em; }
 .right{ text-align:right; }
