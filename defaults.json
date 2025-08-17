@@ -1,0 +1,24 @@
+{
+  "purchasePrice": 500000,
+  "amortYears": 25,
+  "participants": [
+  { "name": "P1", "percent": 25, "loanCost": 0 },
+  { "name": "P2", "percent": 25, "loanCost": 0 },
+  { "name": "P3", "percent": 50, "loanCost": 0 }
+  ],
+  "charges": [
+    { "name": "Eau", "type": "recurring", "amount": 0 },
+    { "name": "Electricité", "type": "recurring", "amount": 0 },
+    { "name": "Taxe d'habitation", "type": "recurring", "amount": 0 }
+  ],
+  "weeksDefaults": {
+    "weight": 100
+  },
+  "categories": [
+    { "name": "Propriétaires", "factorPct": 100 },
+    { "name": "Famille proche", "factorPct": 100 },
+  { "name": "Famille", "factorPct": 125 },
+    { "name": "Locataires externes", "factorPct": 200 }
+  ],
+  "people": []
+}

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simulateur de coût maison</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Simulateur de coût d'une maison</h1>
+      <div class="actions">
+        <button id="saveBtn" title="Télécharger un fichier JSON">💾 Save</button>
+        <label class="load-label" for="loadInput" title="Charger un JSON sauvegardé">📂 Load</label>
+        <input id="loadInput" type="file" accept="application/json,.json" />
+      </div>
+    </header>
+
+    <main>
+      <section class="card" id="purchase-section">
+        <h2>Achat et parts</h2>
+        <div class="grid two">
+          <div class="field">
+            <label for="purchasePrice">Montant d'achat (€)</label>
+            <input id="purchasePrice" type="number" min="0" step="100" />
+          </div>
+          <div class="field">
+            <label for="amortYears">Amortissement (années)</label>
+            <input id="amortYears" type="number" min="1" step="1" />
+          </div>
+        </div>
+
+        <div class="participants">
+          <div class="participants-header">
+            <h3>Participants et parts (%)</h3>
+            <button id="addParticipantBtn" class="small">+ Ajouter un participant</button>
+          </div>
+          <div id="participantsWarning" class="warn" aria-live="polite"></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Part (%)</th>
+                <th>Montant d'achat de la part</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="participantsTbody"></tbody>
+            <tfoot>
+              <tr>
+                <td class="right"><strong>Total</strong></td>
+                <td><strong id="participantsPercentTotal">0%</strong></td>
+                <td><strong id="participantsAmountTotal">0€</strong></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" id="charges-section">
+        <h2>Charges annuelles</h2>
+        <div class="charges-header">
+          <div style="display:flex; gap:8px;">
+            <button id="addChargeBtn" class="small">+ Ajouter une charge</button>
+            <button id="addAmortBtn" class="small">+ Ajouter amortissement</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Type</th>
+              <th>Montant annuel (€)</th>
+              <th>Montant total (€)</th>
+              <th>Durée (ans)</th>
+              <th>Calculé (€/an)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="chargesTbody"></tbody>
+          <tfoot>
+            <tr>
+              <td class="right"><strong>Total charges</strong></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td><strong id="chargesTotal">0€</strong></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <section class="card" id="annual-section">
+        <h2>Coût annuel</h2>
+        <div class="grid three">
+          <div class="metric">
+            <div class="label">Amortissement annuel</div>
+            <div class="value" id="amortAnnual">0€</div>
+          </div>
+          <div class="metric">
+            <div class="label">Total charges</div>
+            <div class="value" id="chargesAnnual">0€</div>
+          </div>
+          <div class="metric primary">
+            <div class="label">Coût annuel total</div>
+            <div class="value" id="annualTotal">0€</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="people-categories-section">
+        <h2>Accès et catégories</h2>
+        <div class="grid two">
+          <div>
+            <div class="participants-header">
+              <h3>Catégories</h3>
+              <button id="addCategoryBtn" class="small">+ Ajouter catégorie</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>% du prix coûtant</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="categoriesTbody"></tbody>
+            </table>
+          </div>
+          <div>
+            <div class="participants-header">
+              <h3>Personnes autorisées</h3>
+              <button id="addPersonBtn" class="small">+ Ajouter personne</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Catégorie</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="peopleTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="weeks-section">
+        <h2>Répartition des semaines</h2>
+        <p class="hint">
+          Saisissez un nom pour les semaines utilisées. Les semaines sans nom ne comptent pas. Utilisez le % pour ajuster le coût (haute saison, hiver, ...). Le prix réel d'une semaine est toujours égal au prix suggéré (catégorie incluse) ou au prix révisé si vous le renseignez.
+        </p>
+        <div class="grid two" style="margin: 8px 0 12px;">
+          <div class="field">
+            <label for="yearSelect">Année</label>
+            <input id="yearSelect" type="number" min="1970" max="2100" step="1" />
+          </div>
+        </div>
+        <div class="weeks-summary grid four">
+          <div class="metric">
+            <div class="label">Semaines utilisées</div>
+            <div class="value" id="usedWeeks">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Somme des %</div>
+            <div class="value" id="sumWeights">0%</div>
+          </div>
+          <div class="metric">
+            <div class="label">Prix de base (100%)</div>
+            <div class="value" id="baseWeekPrice">0€</div>
+          </div>
+          <div class="metric primary">
+            <div class="label">Somme des semaines</div>
+            <div class="value" id="sumWeeksPrices">0€</div>
+          </div>
+        </div>
+
+        <div class="weeks-table-container">
+          <table class="weeks">
+            <thead>
+              <tr>
+                <th>Semaine</th>
+                <th>Dates</th>
+                <th>%</th>
+                <th>Personne</th>
+                <th>Prix suggéré</th>
+                <th>Prix révisé</th>
+                <th>Prix réel</th>
+              </tr>
+            </thead>
+            <tbody id="weeksTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" id="participants-summary-section">
+        <h2>Résumé par participant</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Part (%)</th>
+              <th>Part du coût annuel</th>
+              <th>Coût emprunt (€/an)</th>
+              <th>Valeur des semaines utilisées personnellement (€/an)</th>
+              <th>Locations attribuées (€/an)</th>
+              <th>Revenu (€/an)</th>
+              <th>Coût net (€/an)</th>
+            </tr>
+          </thead>
+          <tbody id="participantsSummaryTbody"></tbody>
+          <tfoot>
+            <tr>
+              <td class="right"><strong>Total</strong></td>
+              <td><strong id="summaryPercentTotal">0%</strong></td>
+              <td><strong id="summaryShareTotal">0€</strong></td>
+              <td><strong id="summaryLoanTotal">0€</strong></td>
+              <td><strong id="summarySelfPaidTotal">0€</strong></td>
+              <td><strong id="summaryRentTotal">0€</strong></td>
+              <td><strong id="summaryRevenueTotal">0€</strong></td>
+              <td><strong id="summaryNetTotal">0€</strong></td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+    </main>
+
+    <footer>
+      <small>Local, sans serveur. Données enregistrables en JSON.</small>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>

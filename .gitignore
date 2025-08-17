@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Builds / dist
+/dist/
+/build/
+/.cache/
+/.parcel-cache/
+/.next/
+/out/
+
+# Dependencies
+/node_modules/
+
+# Env
+.env
+.env.*
+
+# Coverage
+/coverage/
+
+# Misc
+*.local
