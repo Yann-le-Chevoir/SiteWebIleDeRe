@@ -69,10 +69,10 @@
   copyConfigBtn: document.getElementById('copyConfigBtn'),
   deleteConfigBtn: document.getElementById('deleteConfigBtn'),
   importLocalToDriveBtn: document.getElementById('importLocalToDriveBtn'),
-  // OneDrive UI
-  oneDriveConnectBtn: document.getElementById('oneDriveConnectBtn'),
-  oneDriveDisconnectBtn: document.getElementById('oneDriveDisconnectBtn'),
-  oneDriveStatus: document.getElementById('oneDriveStatus'),
+  // Google Drive UI
+  googleDriveConnectBtn: document.getElementById('googleDriveConnectBtn'),
+  googleDriveDisconnectBtn: document.getElementById('googleDriveDisconnectBtn'),
+  googleDriveStatus: document.getElementById('googleDriveStatus'),
   };
 
   // State
@@ -1104,14 +1104,19 @@
   currentSource = 'drive';
 
         async function ensureFolder(){
-          const name = gdriveCfg.folderName || 'SimulateurMaison';
-          // Find folder
-          const q = `name = '${name.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and 'root' in parents and trashed = false`;
-          let resp = await gapi.client.drive.files.list({ q, fields: 'files(id,name)' });
-          if (resp.result.files && resp.result.files[0]) return resp.result.files[0].id;
-          // Create folder
-          resp = await gapi.client.drive.files.create({ resource: { name, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }, fields: 'id' });
-          return resp.result.id;
+          const folderPath = (gdriveCfg.folderName || 'SimulateurMaison').split('/').filter(Boolean);
+          let parentId = 'root';
+          for (const segment of folderPath){
+            const q = `name = '${segment.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.folder' and '${parentId}' in parents and trashed = false`;
+            let resp = await gapi.client.drive.files.list({ q, fields: 'files(id,name)' });
+            let node = (resp.result.files||[])[0];
+            if (!node){
+              resp = await gapi.client.drive.files.create({ resource: { name: segment, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }, fields: 'id' });
+              node = { id: resp.result.id };
+            }
+            parentId = node.id;
+          }
+          return parentId;
         }
         async function list(){
           const folderId = await ensureFolder();
