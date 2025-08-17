@@ -94,7 +94,7 @@
   let currentSource = 'local'; // 'local' | 'drive'
   let defaultTemplateState = null; // snapshot of defaults.json-loaded state
   let remoteAPI = null; // generic remote API (now Google Drive)
-  let gdriveCfg = { clientId: null, apiKey: null, folderName: 'SimulateurMaison', discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'], scope: 'https://www.googleapis.com/auth/drive.file' };
+  let gdriveCfg = { clientId: null, folderName: 'persoYann/SimulateurMaison', discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'], scope: 'https://www.googleapis.com/auth/drive.file' };
 
   function getAllConfigs(){
     try{ return JSON.parse(localStorage.getItem(CONFIGS_KEY)||'{}') || {}; }catch{return {}};
@@ -925,7 +925,6 @@
       if (r.ok){
         const cfg = await r.json();
         if (cfg.clientId) gdriveCfg.clientId = cfg.clientId;
-        if (cfg.apiKey) gdriveCfg.apiKey = cfg.apiKey;
         if (cfg.folderName) gdriveCfg.folderName = cfg.folderName;
         if (cfg.scope) gdriveCfg.scope = cfg.scope;
       }
@@ -1076,15 +1075,13 @@
 
   function setupGoogleDriveUI(){
     if (!els.googleDriveConnectBtn || !els.googleDriveDisconnectBtn || !els.googleDriveStatus) return;
-    if (!gdriveCfg.clientId || !gdriveCfg.apiKey){
-      setGDriveStatus('Google Drive non configuré.');
-    }
+  if (!gdriveCfg.clientId){ setGDriveStatus('Google Drive non configuré.'); }
     toggleGDriveButtons(false);
 
     els.googleDriveConnectBtn.addEventListener('click', async ()=>{
       try{
-        if (!gdriveCfg.clientId || !gdriveCfg.apiKey){
-          alert('Google Drive n\'est pas configuré. Renseignez gdrive.config.json (clientId, apiKey).');
+        if (!gdriveCfg.clientId){
+          alert('Google Drive n\'est pas configuré. Renseignez gdrive.config.json (clientId).');
           return;
         }
         setGDriveStatus('Connexion à Google…');
@@ -1093,7 +1090,7 @@
         await new Promise((resolve, reject)=>{
           gapi.load('client:auth2', async ()=>{
             try {
-              await gapi.client.init({ apiKey: gdriveCfg.apiKey, clientId: gdriveCfg.clientId, discoveryDocs: gdriveCfg.discoveryDocs, scope: gdriveCfg.scope });
+              await gapi.client.init({ clientId: gdriveCfg.clientId, discoveryDocs: gdriveCfg.discoveryDocs, scope: gdriveCfg.scope });
               const auth = gapi.auth2.getAuthInstance();
               if (!auth.isSignedIn.get()){
                 await auth.signIn();

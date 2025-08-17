@@ -26,9 +26,9 @@ Vous pouvez connecter Google Drive pour enregistrer/charger les configurations (
 Configuration:
 
 1. Créez un projet Google Cloud Console, activez l’API Google Drive.
-2. Créez des identifiants OAuth client (type Web) et une clé API.
+2. Créez des identifiants OAuth client (type Web).
 3. Ajoutez votre URL (ex: `http://127.0.0.1:5500/` en local) aux URIs autorisés.
-4. Éditez `gdrive.config.json` et renseignez `clientId` et `apiKey`. Optionnel: `folderName`.
+4. Éditez `gdrive.config.json` et renseignez `clientId`. Optionnel: `folderName`.
 5. Rechargez la page et cliquez sur “Google Drive: Connexion”.
 
 Détails:
@@ -37,4 +37,9 @@ Détails:
 - Le sélecteur bascule sur Drive une fois connecté (Nouveau/Save/Copier/Supprimer).
 - Déconnexion: bouton “Déconnexion”.
 
-Note: l’ancienne persistance serveur est supprimée par défaut. Vous pouvez encore l’utiliser en servant `server.js` si besoin, mais ce n’est plus nécessaire pour Drive.
+Sécurité (repo public):
+
+- N’exposez pas de secrets dans le repo. L’auth OAuth suffit pour Drive; aucune clé d’API n’est requise.
+- Vous pouvez garder un `gdrive.config.json` local non versionné (ajoutez-le à `.gitignore`) et fournir un autre fichier pour la prod via un hébergement séparé (ou remplir la config dynamiquement).
+
+Note: l’ancienne persistance serveur est supprimée.
