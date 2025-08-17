@@ -53,11 +53,7 @@ main{ padding: 20px; display:flex; flex-direction:column; gap:20px; max-width:11
   .weeks-table-container{ max-height: 50vh; }
 }
 
-@media (max-width: 420px){
-  /* Hide Dates column in weeks table to save space on very small screens */
-  .weeks th:nth-child(2),
-  .weeks td:nth-child(2){ display:none; }
-}
+
 .participants-header, .charges-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0 10px; }
 .warn{ color:#fde68a; min-height:1em; }
 .right{ text-align:right; }
