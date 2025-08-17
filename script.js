@@ -765,34 +765,8 @@
       if (!file) return;
       try {
         const text = await file.text();
-        const obj = JSON.parse(text);
-        state.purchasePrice = Number.isFinite(+obj.purchasePrice) ? Math.max(0, +obj.purchasePrice) : undefined;
-        state.amortYears = Number.isFinite(+obj.amortYears) && +obj.amortYears>0 ? +obj.amortYears : undefined;
-        state.participants = Array.isArray(obj.participants) ? obj.participants.map(p=>({ name: p.name||'', percent: Number.isFinite(+p.percent)? clamp(+p.percent,0,100): undefined, loanCost: Number.isFinite(+p.loanCost)? Math.max(0, +p.loanCost) : undefined })) : [];
-        state.charges = Array.isArray(obj.charges) ? obj.charges.map(c=>({
-          name: c.name||'',
-          type: (c.type==='amortized' || c.type==='recurring') ? c.type : undefined,
-          amount: Number.isFinite(+c.amount)? Math.max(0,+c.amount): undefined,
-          total: Number.isFinite(+c.total)? Math.max(0,+c.total): undefined,
-          years: Number.isFinite(+c.years) && +c.years>0 ? +c.years : undefined
-        })) : [];
-        state.year = Number.isFinite(+obj.year) ? clamp(+obj.year, 1970, 2100) : undefined;
-        if (Number.isFinite(state.year)){
-          const weeksInYear = buildWeeksForYear(state.year);
-          if (Array.isArray(obj.weeks)){
-            state.weeks = weeksInYear.map((w,i)=>{
-              const src = obj.weeks[i] || {};
-              return { ...w, who: (src.who||''), weight: Number.isFinite(+src.weight)? clamp(+src.weight,0,1000): undefined, revisedPrice: Number.isFinite(+src.revisedPrice)?+src.revisedPrice:undefined };
-            });
-          } else {
-            state.weeks = weeksInYear;
-          }
-        } else {
-          state.weeks = [];
-        }
-        if (Array.isArray(obj.categories)) state.categories = obj.categories.map(c=>({ name: c.name||'', factorPct: Number.isFinite(+c.factorPct)? clamp(+c.factorPct, 0, 1000) : undefined }));
-        if (Array.isArray(obj.people)) state.people = obj.people.map(pr=>({ name: pr.name||'', categoryName: pr.categoryName|| '' }));
-        renderAll();
+  const obj = JSON.parse(text);
+  applyObjectToState(obj);
       } catch(err){
         alert('Fichier JSON invalide.');
         console.error(err);
@@ -989,45 +963,100 @@
       if (els.importLocalToDriveBtn) els.importLocalToDriveBtn.style.display = '';
     };
 
-    // Wire events to remote
+    // Helpers to resolve selected origin
+    function getSelectedOrigin(){
+      const v = els.configSelect && els.configSelect.value;
+      if (!v) return null;
+      const [src, name] = v.split('::');
+      return { src, name };
+    }
+
+    // Wire events honoring selected origin (local or drive)
     els.newConfigBtn.onclick = async ()=>{
+      const desired = getSelectedOrigin();
+      const createOn = desired?.src || 'drive';
       const name = promptName('Nouvelle config');
       if (!name) return;
       const tpl = getDefaultTemplate();
-      await remoteAPI.save(name, tpl);
-      await refreshServerCache();
-      setCurrentName(name);
-      currentSource = 'drive';
-      applyObjectToState(tpl);
+      if (createOn === 'local'){
+        const all = getAllConfigs();
+        all[name] = JSON.parse(JSON.stringify(tpl));
+        setAllConfigs(all);
+        setCurrentName(name);
+        currentSource = 'local';
+        updateConfigSelect();
+        applyObjectToState(tpl);
+      } else {
+        await remoteAPI.save(name, tpl);
+        await refreshServerCache();
+        setCurrentName(name);
+        currentSource = 'drive';
+        applyObjectToState(tpl);
+      }
     };
     els.saveConfigBtn.onclick = async ()=>{
-      let name = currentConfigName;
+      const selected = getSelectedOrigin();
+      let name = currentConfigName || selected?.name;
       if (!name){ name = promptName('Nom de la config'); if (!name) return; }
-      await remoteAPI.save(name, cloneState());
-      await refreshServerCache();
-      setCurrentName(name);
-      currentSource = 'drive';
-      alert('Configuration sauvegardée.');
+      const snapshot = cloneState();
+      if ((selected?.src || currentSource) === 'local'){
+        const all = getAllConfigs();
+        all[name] = snapshot;
+        setAllConfigs(all);
+        setCurrentName(name);
+        currentSource = 'local';
+        updateConfigSelect();
+        alert('Configuration locale sauvegardée.');
+      } else {
+        await remoteAPI.save(name, snapshot);
+        await refreshServerCache();
+        setCurrentName(name);
+        currentSource = 'drive';
+        alert('Configuration Drive sauvegardée.');
+      }
     };
     els.copyConfigBtn.onclick = async ()=>{
+      const selected = getSelectedOrigin();
+      const copyTo = selected?.src || currentSource || 'drive';
       const name = promptName('Nom de la copie');
       if (!name) return;
-      await remoteAPI.save(name, cloneState());
-      await refreshServerCache();
-      setCurrentName(name);
-      currentSource = 'drive';
-      alert('Copie enregistrée.');
+      const snapshot = cloneState();
+      if (copyTo === 'local'){
+        const all = getAllConfigs();
+        all[name] = snapshot;
+        setAllConfigs(all);
+        setCurrentName(name);
+        currentSource = 'local';
+        updateConfigSelect();
+        alert('Copie locale enregistrée.');
+      } else {
+        await remoteAPI.save(name, snapshot);
+        await refreshServerCache();
+        setCurrentName(name);
+        currentSource = 'drive';
+        alert('Copie enregistrée sur Drive.');
+      }
     };
     els.deleteConfigBtn.onclick = async ()=>{
-      if (!currentConfigName){ alert('Aucune configuration sélectionnée.'); return; }
-      if (currentConfigName === 'Défaut'){ alert('La configuration "Défaut" ne peut pas être supprimée.'); return; }
-      if (!confirm(`Supprimer la configuration "${currentConfigName}" ?`)) return;
-      await remoteAPI.remove(currentConfigName);
-      await refreshServerCache();
-      setCurrentName('Défaut');
-      currentSource = 'drive';
-      const obj = await remoteAPI.get('Défaut');
-      if (obj) applyObjectToState(obj);
+      const selected = getSelectedOrigin();
+      const src = selected?.src || currentSource;
+      const name = selected?.name || currentConfigName;
+      if (!name){ alert('Aucune configuration sélectionnée.'); return; }
+      if (name === 'Défaut'){ alert('La configuration "Défaut" ne peut pas être supprimée.'); return; }
+      if (!confirm(`Supprimer la configuration "${name}" ?`)) return;
+      if (src === 'local'){
+        const all = getAllConfigs();
+        delete all[name];
+        setAllConfigs(all);
+        setCurrentName(null);
+        updateConfigSelect();
+      } else {
+        await remoteAPI.remove(name);
+        await refreshServerCache();
+        setCurrentName('Défaut');
+        const obj = await remoteAPI.get('Défaut');
+        if (obj) applyObjectToState(obj);
+      }
     };
     if (els.importLocalToDriveBtn){
       els.importLocalToDriveBtn.onclick = async ()=>{
