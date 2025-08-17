@@ -15,6 +15,7 @@ header .actions{ display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
 #loadInput{ display:none; }
 .load-label, button{ cursor:pointer; border:1px solid var(--border); background:#0b1020; color:var(--text); padding:8px 12px; border-radius:8px; }
 button.small{ padding:6px 10px; font-size:12px; }
+button.icon-btn{ padding:6px 8px; font-size:18px; line-height:1; width:32px; height:32px; display:flex; align-items:center; justify-content:center; }
 button.primary{ background: var(--primary); color:#04210f; border-color:#0f5132; }
 button.danger{ background: #1b0d0d; color:#fca5a5; border-color:#3f1d1d; }
 main{ padding: 20px; display:flex; flex-direction:column; gap:20px; max-width:1100px; margin:0 auto; }
@@ -28,6 +29,15 @@ main{ padding: 20px; display:flex; flex-direction:column; gap:20px; max-width:11
 .grid.four{ grid-template-columns: repeat(4, minmax(0,1fr)); }
 @media (max-width: 800px){ .grid.two, .grid.three, .grid.four{ grid-template-columns: 1fr; } }
 .configs{ display:flex; flex-wrap: wrap; gap:8px; align-items:center; }
+/* More menu */
+.menu{ position: relative; }
+.dropdown{ position:absolute; right:0; top:38px; background:#0b1020; border:1px solid var(--border); border-radius:8px; min-width:220px; box-shadow: 0 6px 24px rgba(0,0,0,0.4); padding:6px; }
+.dropdown-item{ display:block; width:100%; text-align:left; background:transparent; border:none; color:var(--text); padding:8px 10px; border-radius:6px; cursor:pointer; }
+.dropdown-item:hover{ background:#111a33; }
+
+@media (max-width: 600px){
+  .dropdown{ min-width: 200px; }
+}
 .configs label{ font-size:12px; }
 .configs select{ min-width: 220px; }
 
@@ -77,3 +87,32 @@ td select{ width:100%; background:#0b1020; color:var(--text); border:1px solid v
 .weeks td:nth-child(3) input[type="number"]{ width: 80px; text-align: right; }
 
 footer{ padding:16px 20px; color: var(--muted); text-align:center; }
+
+/* participant summary table scroll */
+.table-scroll{ overflow-x:auto; -webkit-overflow-scrolling: touch; }
+.participants-summary-container{ border:1px solid var(--border); border-radius:10px; }
+
+/* Make long headers wrap in participant summary */
+.participants-summary-container th{ white-space: normal; overflow-wrap: break-word; word-break: normal; hyphens: none; }
+.participants-summary-container td{ white-space: nowrap; }
+.participants-summary-container td:nth-child(2),
+.participants-summary-container td:nth-child(3),
+.participants-summary-container td:nth-child(4),
+.participants-summary-container td:nth-child(5),
+.participants-summary-container td:nth-child(6),
+.participants-summary-container td:nth-child(7),
+.participants-summary-container td:nth-child(8){ text-align: right; }
+
+@media (max-width: 800px){
+  .participants-summary-container th{ font-size: 12px; }
+}
+@media (max-width: 600px){
+  /* Constrain header width so labels wrap at spaces, but keep a sensible minimum */
+  .participants-summary-container th:nth-child(3),
+  .participants-summary-container th:nth-child(4),
+  .participants-summary-container th:nth-child(5),
+  .participants-summary-container th:nth-child(6),
+  .participants-summary-container th:nth-child(7),
+  .participants-summary-container th:nth-child(8){ max-width: 160px; min-width: 120px; }
+  .participants-summary-container input[type="number"]{ width: 130px; }
+}

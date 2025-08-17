@@ -23,8 +23,13 @@
           <button id="googleDriveDisconnectBtn" class="small" style="display:none" title="Se déconnecter de Google Drive">Déconnexion</button>
           <span id="googleDriveStatus" class="muted" style="display:none"></span>
         </div>
-        <button id="saveBtn" title="Exporter en JSON">💾 Export</button>
-        <label class="load-label" for="loadInput" title="Importer un JSON">📂 Import</label>
+        <div class="menu">
+          <button id="moreMenuBtn" class="icon-btn" aria-haspopup="true" aria-expanded="false" aria-controls="moreMenu" title="Plus d'options">⋮</button>
+          <div id="moreMenu" class="dropdown" role="menu" hidden>
+            <button id="saveBtn" class="dropdown-item" role="menuitem">💾 Exporter en JSON</button>
+            <label class="dropdown-item" for="loadInput" role="menuitem">📂 Importer un JSON</label>
+          </div>
+        </div>
         <input id="loadInput" type="file" accept="application/json,.json" />
       </div>
   <div id="defaultsError" class="warn" style="display:none" aria-live="polite"></div>
@@ -212,6 +217,7 @@
 
       <section class="card" id="participants-summary-section">
         <h2>Résumé par participant</h2>
+        <div class="table-scroll participants-summary-container">
         <table>
           <thead>
             <tr>
@@ -239,9 +245,27 @@
             </tr>
           </tfoot>
         </table>
+        </div>
       </section>
     </main>
 
     <script src="script.js"></script>
+    <script>
+      (function(){
+        const btn = document.getElementById('moreMenuBtn');
+        const menu = document.getElementById('moreMenu');
+        if (!btn || !menu) return;
+        function close(){ menu.hidden = true; btn.setAttribute('aria-expanded','false'); }
+        btn.addEventListener('click', (e)=>{
+          const open = menu.hidden !== false ? false : true;
+          if (open) { close(); }
+          else { menu.hidden = false; btn.setAttribute('aria-expanded','true'); }
+        });
+        document.addEventListener('click', (e)=>{
+          if (!menu.hidden && !menu.contains(e.target) && e.target !== btn){ close(); }
+        });
+        window.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
+      })();
+    </script>
   </body>
 </html>
